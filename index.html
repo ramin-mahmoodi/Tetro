@@ -1,0 +1,413 @@
+<!DOCTYPE html>
+<html lang="fa" dir="rtl">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=5.0, user-scalable=yes">
+  <title>TETRO</title>
+  
+  <!-- PWA Meta Tags -->
+  <meta name="theme-color" content="#222222">
+  <meta name="mobile-web-app-capable" content="yes">
+  <meta name="apple-mobile-web-app-capable" content="yes">
+  <meta name="apple-mobile-web-app-status-bar-style" content="black-translucent">
+  <meta name="apple-mobile-web-app-title" content="TETRO">
+  <meta name="application-name" content="TETRO">
+  <meta name="description" content="ردیاب زنده و فوق سریع قیمت تتر در صرافی‌های برتر ایرانی به همراه نمودارهای تعاملی">
+  
+  <link rel="apple-touch-icon" href="./assets/icons/apple-touch-icon.png">
+  <link rel="icon" type="image/png" sizes="192x192" href="./assets/icons/icon-192.png">
+  <link rel="icon" type="image/png" sizes="512x512" href="./assets/icons/icon-512.png">
+  <link rel="icon" type="image/svg+xml" href="./assets/icon.svg">
+  <link rel="manifest" href="./manifest.json">
+
+  <!-- Fonts: Google Fonts (Inter, Poppins, Vazirmatn) -->
+  <link rel="preconnect" href="https://fonts.googleapis.com">
+  <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+  <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;600;700;800;900&family=Poppins:wght@700;800;900&family=Vazirmatn:wght@400;600;700;800;900&display=swap" rel="stylesheet">
+
+  <!-- Phosphor Icons -->
+  <script src="https://unpkg.com/@phosphor-icons/web"></script>
+
+  <!-- Modular Stylesheets -->
+  <link rel="stylesheet" href="./css/tokens.css?v=4">
+  <link rel="stylesheet" href="./css/themes.css?v=4">
+  <link rel="stylesheet" href="./css/layout.css?v=4">
+  <link rel="stylesheet" href="./css/components.css?v=4">
+  <link rel="stylesheet" href="./css/chart.css?v=4">
+</head>
+<body>
+
+  <!-- Dynamic Theme Container (Controls the active palette class) -->
+  <div id="hyp-color" class="defaultPalette">
+    <div class="hyp">
+
+      <!-- ==================================================================
+           DESKTOP SIDE-RAIL NAVIGATION (Matching reference design)
+           ================================================================== -->
+      <aside class="hyp-menu" aria-label="Desktop Navigation Rail">
+        <!-- Main Site Brand / Home Button -->
+        <a href="#" class="hyp-menu-click" title="تترو // صفحه نخست">
+          <div class="hyp-menu-click1">
+            <div class="hyp-menu-click2">
+              <div><img src="./assets/icon.svg" alt="TETRO" class="rail-brand-icon"></div>
+            </div>
+          </div>
+          <div class="hyp-menu-click3">TETRO</div>
+        </a>
+
+        <div class="hyp-menu-divide"><div></div></div>
+
+        <!-- Vertical Nav Links -->
+        <div class="hyp-menu-links">
+          <a href="#" class="active" title="صفحه نخست"><i class="ph ph-house"></i></a>
+          <a href="#chart-section" title="نمودار قیمت"><i class="ph ph-chart-line-up"></i></a>
+          <a href="#exchanges-section" title="نرخ صرافی‌ها"><i class="ph ph-currency-dollar-simple"></i></a>
+          <button class="open-theme-modal" title="تنظیمات تم و اندازه قلم"><i class="ph ph-gear"></i></button>
+          <button class="pwa-install-btn" style="display:none;" title="نصب اپلیکیشن تترو"><i class="ph ph-download-simple"></i></button>
+        </div>
+
+        <div class="hyp-menu-divide"><div></div></div>
+
+        <!-- Rotated Brutalist Brand Logo -->
+        <div class="hyp-menu-brand">
+          TETRO <b>USDT</b>
+        </div>
+      </aside>
+
+      <!-- Slant Striped Accent Rail -->
+      <div class="hyp-slant" aria-hidden="true"></div>
+
+      <!-- ==================================================================
+           MAIN CONTENT BODY
+           ================================================================== -->
+      <main class="hyp-body">
+        
+        <!-- Mobile Top Header (Visible on <= 860px) -->
+        <header class="mobile-header">
+          <div class="mobile-brand">
+            <span dir="ltr">TETRO</span>
+            <span class="badge">LIVE</span>
+          </div>
+          <div class="mobile-header-actions">
+            <!-- Mobile Last Update Box -->
+            <div class="last-update-box mobile-update-box" title="زمان آخرین بروزرسانی داده‌های بازار">
+              <i class="ph ph-clock"></i>
+              <span class="last-update-text">لحظاتی پیش</span>
+            </div>
+            <!-- Mobile Currency Switcher (Toman / Rial) -->
+            <div class="mobile-currency-selector" aria-label="انتخاب واحد پولی">
+              <button class="currency-btn active" data-currency="TOMAN">تومان</button>
+              <button class="currency-btn" data-currency="RIAL">ریال</button>
+            </div>
+          </div>
+        </header>
+
+        <!-- Main Inner Dashboard -->
+        <div class="hyp-wrapper">
+
+          <!-- Desktop Top Bar: Only the 3 boxes on Desktop (Hidden on mobile) -->
+          <section class="hyp-ban desktop-only">
+            <div class="hyp-banner-top">
+              <div class="hyp-banner-sub-group">
+                <div class="hyp-banner-sub">
+                  <div class="pulse-dot"></div>
+                  <b dir="ltr">TETRO</b>
+                  <span>فید لحظه‌ای بازار</span>
+                </div>
+                <div class="hyp-banner-sub">
+                  <b dir="ltr">SOURCES</b>
+                  <span>۸ صرافی معتبر</span>
+                </div>
+                <div class="hyp-banner-sub">
+                  <b dir="ltr">NETWORK</b>
+                  <span>USDT / IRT</span>
+                </div>
+              </div>
+
+              <!-- Desktop Currency Switcher & Last Update Box -->
+              <div class="header-action-group">
+                <div class="last-update-box" title="زمان آخرین بروزرسانی داده‌های بازار">
+                  <i class="ph ph-clock"></i>
+                  <span class="last-update-text">لحظاتی پیش</span>
+                </div>
+                <div class="currency-selector" aria-label="انتخاب واحد پولی">
+                  <button class="currency-btn active" data-currency="TOMAN">تومان</button>
+                  <button class="currency-btn" data-currency="RIAL">ریال</button>
+                </div>
+              </div>
+            </div>
+          </section>
+
+          <!-- Top Metric Cards Grid -->
+          <section class="metrics-grid" aria-label="آمار لحظه‌ای قیمت">
+            <!-- Hero Metric: Market Average -->
+            <div class="metric-card hero-metric">
+              <div>
+                <div class="metric-label">
+                  <span>میانگین بازار ایران</span>
+                  <i class="ph ph-arrows-clockwise"></i>
+                </div>
+                <div class="metric-value" id="hero-avg-price">-- تومان</div>
+              </div>
+              <div class="metric-sub">
+                <div id="hero-change-badge" class="change-badge positive">
+                  <i class="ph ph-trend-up"></i>
+                  <span>+0.00%</span>
+                </div>
+                <span>نوسان ۲۴ ساعت</span>
+              </div>
+            </div>
+
+            <!-- 24h High -->
+            <div class="metric-card">
+              <div>
+                <div class="metric-label">
+                  <span>بیشترین ۲۴ ساعت</span>
+                  <i class="ph ph-arrow-up-right"></i>
+                </div>
+                <div class="metric-value" id="metric-high-24h">--</div>
+              </div>
+              <div class="metric-sub">
+                <span>سقف قیمت ثبت‌شده</span>
+              </div>
+            </div>
+
+            <!-- 24h Low -->
+            <div class="metric-card">
+              <div>
+                <div class="metric-label">
+                  <span>کمترین ۲۴ ساعت</span>
+                  <i class="ph ph-arrow-down-right"></i>
+                </div>
+                <div class="metric-value" id="metric-low-24h">--</div>
+              </div>
+              <div class="metric-sub">
+                <span>کف قیمت ثبت‌شده</span>
+              </div>
+            </div>
+
+            <!-- 24h Volume -->
+            <div class="metric-card">
+              <div>
+                <div class="metric-label">
+                  <span>حجم معاملات ۲۴h</span>
+                  <i class="ph ph-chart-bar"></i>
+                </div>
+                <div class="metric-value" id="metric-total-vol">--</div>
+              </div>
+              <div class="metric-sub">
+                <span>تخمین کل صرافی‌ها</span>
+              </div>
+            </div>
+          </section>
+
+          <!-- ==============================================================
+               INTERACTIVE CHART SECTION
+               ============================================================== -->
+          <section class="chart-section" id="chart-section" aria-label="نمودار تعاملی قیمت">
+            <div class="chart-header">
+              <div class="chart-title-wrap">
+                <div class="chart-title">
+                  <i class="ph ph-chart-line-up"></i>
+                  <span>نمودار تعاملی قیمت تتر</span>
+                </div>
+                <div class="chart-subinfo">
+                  آخرین نرخ: <span id="chart-current-price" style="color:var(--accent1); font-weight:800;">--</span>
+                </div>
+              </div>
+
+              <!-- Controls: Source, Chart Type, Timeframes -->
+              <div class="chart-controls">
+                <select class="chart-source-select" id="chart-source-select" title="انتخاب منبع قیمت">
+                  <option value="aggregate">میانگین بازار</option>
+                  <option value="nobitex">نوبیتکس</option>
+                  <option value="wallex">والکس</option>
+                  <option value="ramzinex">رمزینکس</option>
+                  <option value="abantether">آبان‌تتر</option>
+                  <option value="tetherland">تترلند</option>
+                  <option value="tabdeal">تبدیل</option>
+                  <option value="exir">اکسیر</option>
+                </select>
+
+                <!-- Chart Type Switcher: Candlestick vs Line -->
+                <div class="chart-type-group" role="group" aria-label="نوع نمودار">
+                  <button class="type-btn active" data-type="candlestick" title="نمودار کندل استیک">
+                    <i class="ph ph-chart-bar"></i>
+                    <span>کندل</span>
+                  </button>
+                  <button class="type-btn" data-type="line" title="نمودار خطی">
+                    <i class="ph ph-chart-line"></i>
+                    <span>خطی</span>
+                  </button>
+                </div>
+
+                <!-- Timeframe Switcher: Buttons on Desktop, Dropdown Menu on Mobile -->
+                <div class="timeframe-wrapper">
+                  <div class="timeframe-group desktop-tf-group" role="group" aria-label="بازه زمانی">
+                    <button class="tf-btn" data-tf="1H">1H</button>
+                    <button class="tf-btn active" data-tf="24H">24H</button>
+                    <button class="tf-btn" data-tf="7D">7D</button>
+                    <button class="tf-btn" data-tf="30D">30D</button>
+                    <button class="tf-btn" data-tf="1Y">1Y</button>
+                  </div>
+
+                  <select class="chart-timeframe-select mobile-tf-select" id="chart-timeframe-select" title="بازه زمانی" style="display: none;">
+                    <option value="1H">1H</option>
+                    <option value="24H" selected>24H</option>
+                    <option value="7D">7D</option>
+                    <option value="30D">30D</option>
+                    <option value="1Y">1Y</option>
+                  </select>
+                </div>
+              </div>
+            </div>
+
+            <!-- Canvas Viewport with Touch Crosshair -->
+            <div class="chart-viewport" id="chart-viewport">
+              <canvas class="chart-canvas" id="chart-canvas"></canvas>
+              <div class="chart-tooltip" id="chart-tooltip"></div>
+            </div>
+
+            <div class="chart-footer">
+              <div class="chart-range-stats">
+                <span>کف بازه: <b id="chart-min-price">--</b></span>
+                <span>سقف بازه: <b id="chart-max-price">--</b></span>
+              </div>
+              <div>
+                <span>برای مشاهده جزئیات، روی نمودار لمس کنید یا بکشید.</span>
+              </div>
+            </div>
+          </section>
+
+          <!-- ==============================================================
+               EXCHANGES SECTION
+               ============================================================== -->
+          <section id="exchanges-section" aria-label="قیمت لحظه‌ای صرافی‌ها">
+            <div class="section-header">
+              <div class="section-title">
+                <i class="ph ph-bank"></i>
+                <span>نرخ خرید و فروش صرافی‌ها</span>
+              </div>
+
+              <!-- Filter & Sort Bar -->
+              <div class="filter-controls">
+                <input type="text" class="search-input" id="exchange-search" placeholder="جستجوی نام صرافی...">
+                <select class="sort-select" id="exchange-sort" title="مرتب‌سازی صرافی‌ها">
+                  <option value="best_buy">ارزان‌ترین خرید</option>
+                  <option value="best_sell">گران‌ترین فروش</option>
+                  <option value="name">بر اساس نام</option>
+                </select>
+              </div>
+            </div>
+
+            <!-- Dynamic 1-Row Per Exchange Table Container with 24h Mini Sparklines -->
+            <div class="exchanges-table-container">
+              <div class="exchanges-table-head">
+                <span>صرافی / منبع</span>
+                <span style="text-align:center;">روند ۲۴ ساعته</span>
+                <span>خرید از صرافی</span>
+                <span>فروش به صرافی</span>
+                <span>تغییر ۲۴h</span>
+                <span>کف و سقف ۲۴h</span>
+              </div>
+              <div id="exchanges-table-body">
+                <!-- Dynamically rendered rows: 1 exchange per row via js/ui-renderer.js -->
+              </div>
+            </div>
+          </section>
+
+        </div>
+      </main>
+
+    </div>
+  </div>
+
+  <!-- ======================================================================
+       MOBILE BOTTOM NAVIGATION (Touch targets >= 48px)
+       ====================================================================== -->
+  <nav class="mobile-nav" aria-label="ناوبری لمسی موبایل">
+    <button class="mobile-nav-item active" data-target="home">
+      <i class="ph ph-house"></i>
+      <span>خانه</span>
+    </button>
+    <button class="mobile-nav-item" data-target="chart">
+      <i class="ph ph-chart-line-up"></i>
+      <span>چارت</span>
+    </button>
+    <button class="mobile-nav-item" data-target="exchanges">
+      <i class="ph ph-currency-dollar-simple"></i>
+      <span>صرافی‌ها</span>
+    </button>
+    <button class="mobile-nav-item" data-target="themes">
+      <i class="ph ph-palette"></i>
+      <span>تم‌ها</span>
+    </button>
+  </nav>
+
+  <!-- ======================================================================
+       VISUAL THEME DRAWER & SETTINGS MODAL (58 Themes, 3 Modes, Font Sizer)
+       ====================================================================== -->
+  <div class="theme-modal-backdrop" id="theme-modal" role="dialog" aria-modal="true" aria-label="تنظیمات تم و ظاهر">
+    <div class="theme-modal">
+      <div class="theme-modal-header">
+        <div class="theme-modal-title">
+          <i class="ph-duotone ph-sliders"></i>
+          <span>تنظیمات ظاهر و تم‌ها // <b>۵۸ پالت رنگی</b></span>
+        </div>
+        <button class="theme-modal-close" id="theme-modal-close" title="بستن (Escape)">
+          <i class="ph ph-x"></i>
+        </button>
+      </div>
+
+      <div class="theme-modal-body">
+        <!-- 3 Base Modes Switch -->
+        <div class="mode-switches-box">
+          <h4>حالت پایه (Base Mode)</h4>
+          <div class="mode-buttons-row">
+            <button class="mode-btn" data-mode="1">
+              <i class="ph ph-sun"></i>
+              <span>Light</span>
+            </button>
+            <button class="mode-btn" data-mode="2">
+              <i class="ph ph-coffee"></i>
+              <span>Sepia</span>
+            </button>
+            <button class="mode-btn" data-mode="3">
+              <i class="ph ph-moon"></i>
+              <span>Dark</span>
+            </button>
+          </div>
+
+          <!-- Addon Controls: Contrast & Font Sizer -->
+          <div class="addon-toggles-row">
+            <button class="contrast-toggle-btn" id="contrast-toggle">
+              <i class="ph ph-circle-half"></i>
+              <span>حالت کنتراست ملایم</span>
+            </button>
+
+            <div class="font-size-controls">
+              <span>اندازه قلم:</span>
+              <button class="font-btn" id="font-up" title="بزرگ‌تر">+</button>
+              <button class="font-btn" id="font-reset" title="پیش‌فرض">/</button>
+              <button class="font-btn" id="font-down" title="کوچک‌تر">-</button>
+            </div>
+          </div>
+        </div>
+
+        <!-- 58 Visual Palettes Swatches Container -->
+        <div id="modal-palettes-container">
+          <!-- Dynamically populated by js/theme-engine.js -->
+        </div>
+      </div>
+    </div>
+  </div>
+
+  <!-- JavaScript Subsystems -->
+  <script src="./js/theme-engine.js"></script>
+  <script src="./js/data-adapter.js"></script>
+  <script src="./js/chart-engine.js"></script>
+  <script src="./js/ui-renderer.js"></script>
+  <script src="./js/app.js"></script>
+
+</body>
+</html>

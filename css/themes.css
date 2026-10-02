@@ -1,0 +1,213 @@
+/* ==========================================================================
+   TETRO DESIGN SYSTEM - THEME ENGINE CSS
+   58 Curated Retro-Brutalist Color Palettes + 3 Modes + Contrast Filter
+   ========================================================================== */
+
+/* --------------------------------------------------------------------------
+   BASE MODES
+   -------------------------------------------------------------------------- */
+
+/* Sepia Mode */
+.sepiamode {
+  --bg1: var(--sepia1);
+  --bg2: var(--sepia2);
+  --bg3: #d0c8be;
+  --notWhite: var(--sepia3);
+}
+
+/* Low Contrast Mode */
+.contrastmode {
+  filter: contrast(92%) grayscale(20%);
+}
+
+/* Dark Mode */
+.darkmode {
+  --bgInverse: #eaeaea;
+  --bgInverse2: #cccccc;
+  --bg1: #1f1f1f;
+  --bg2: #282828;
+  --bg3: #333333;
+  --darkBg1: #1a1a1a;
+  --darkBg2: #121212;
+
+  --pinkDark: #d46a92;
+  --pinkLight: #a64265;
+  --redDark: #bd4652;
+  --redLight: #80333d;
+  --orangeDark: #c96151; 
+  --orangeLight: #8c4338; 
+  --yellowDark: #b88725;
+  --yellowLight: #735b24;  
+  --greenDark: #59804d;
+  --greenLight: #3c5936;
+  --tealDark: #2a848c;
+  --tealLight: #1f525c;
+  --blueDark: #6568ab;
+  --blueLight: #424278;
+  --purpleDark: #815a9c;
+  --purpleLight: #583763;
+  
+  --silverMid: #7787a3;
+  --notWhite: #c0c0c0;
+  --brownDark: #735750;
+  --beigeLight: #b39f7d;
+  --pinkNeon: #c42d6c;
+  --greenNeon: #5aad34;
+}
+
+/* --------------------------------------------------------------------------
+   PALETTES (Applied to container #hyp-color or body)
+   -------------------------------------------------------------------------- */
+
+/* Default */
+.defaultPalette {
+  --accent1: var(--redDark);
+  --accent2: var(--greenLight);
+}
+.darkmode.defaultPalette,
+.darkmode .defaultPalette {
+  --accent1: var(--redDark);
+  --accent2: var(--pinkLight);
+}
+
+/* --- BASIC GROUPS (8) --- */
+.prettyPink   { --accent1: var(--pinkDark);   --accent2: var(--pinkLight); }
+.cherryRed     { --accent1: var(--redDark);    --accent2: var(--redLight); }
+.tangyOrange   { --accent1: var(--orangeDark); --accent2: var(--orangeLight); }
+.glitterGold   { --accent1: var(--yellowDark); --accent2: var(--yellowLight); }
+.leafyGreen    { --accent1: var(--greenDark);  --accent2: var(--greenLight); }
+.seafoamTeal   { --accent1: var(--tealDark);   --accent2: var(--tealLight); }
+.berryBlue     { --accent1: var(--blueDark);   --accent2: var(--blueLight); }
+.perfectPurple { --accent1: var(--purpleDark); --accent2: var(--purpleLight); }
+
+/* --- PREMIUM GROUPS (22) --- */
+.bubblegumCrisis { --accent1: var(--pinkDark); --accent2: var(--redLight); }
+.darkmode .bubblegumCrisis, .darkmode.bubblegumCrisis { --accent1: var(--redDark); --accent2: var(--pinkLight); }
+
+.pinkLemonade { --accent1: var(--pinkDark); --accent2: var(--yellowLight); }
+.darkmode .pinkLemonade, .darkmode.pinkLemonade { --accent1: var(--yellowDark); --accent2: var(--pinkLight); }
+
+.hatsuneMiku { --accent1: var(--pinkDark); --accent2: var(--tealLight); }
+.darkmode .hatsuneMiku, .darkmode.hatsuneMiku { --accent1: var(--tealDark); --accent2: var(--pinkLight); }
+
+.unicornDust { --accent1: var(--pinkDark); --accent2: var(--purpleLight); }
+.darkmode .unicornDust, .darkmode.unicornDust { --accent1: var(--purpleDark); --accent2: var(--pinkLight); }
+
+.appleOrchard { --accent1: var(--redDark); --accent2: var(--greenLight); }
+.darkmode .appleOrchard, .darkmode.appleOrchard { --accent1: var(--greenDark); --accent2: var(--redLight); }
+
+.retroGamer { --accent1: var(--redDark); --accent2: var(--blueLight); }
+.darkmode .retroGamer, .darkmode.retroGamer { --accent1: var(--blueDark); --accent2: var(--redLight); }
+
+.summerSunshine { --accent1: var(--orangeDark); --accent2: var(--yellowLight); }
+.darkmode .summerSunshine, .darkmode.summerSunshine { --accent1: var(--yellowDark); --accent2: var(--orangeDark); }
+
+.citrusTwist { --accent1: var(--orangeDark); --accent2: var(--greenLight); }
+.darkmode .citrusTwist, .darkmode.citrusTwist { --accent1: var(--orangeDark); --accent2: var(--greenDark); }
+
+.goldfishPond { --accent1: var(--orangeDark); --accent2: var(--blueLight); }
+.darkmode .goldfishPond, .darkmode.goldfishPond { --accent1: var(--blueDark); --accent2: var(--orangeLight); }
+
+.lightningBolt { --accent1: var(--yellowDark); --accent2: var(--tealLight); }
+.darkmode .lightningBolt, .darkmode.lightningBolt { --accent1: var(--tealDark); --accent2: var(--yellowLight); }
+
+.mayFlowers { --accent1: var(--yellowDark); --accent2: var(--purpleLight); }
+.darkmode .mayFlowers, .darkmode.mayFlowers { --accent1: var(--yellowDark); --accent2: var(--purpleDark); }
+
+.melonSlice { --accent1: var(--greenDark); --accent2: var(--redLight); }
+.darkmode .melonSlice, .darkmode.melonSlice { --accent1: var(--greenDark); --accent2: var(--pinkLight); }
+
+.blindJustice { --accent1: var(--tealDark); --accent2: var(--redLight); }
+.darkmode .blindJustice, .darkmode.blindJustice { --accent1: var(--redDark); --accent2: var(--tealLight); }
+
+.greenerGrass { --accent1: var(--tealDark); --accent2: var(--greenLight); }
+.darkmode .greenerGrass, .darkmode.greenerGrass { --accent1: var(--greenDark); --accent2: var(--tealLight); }
+
+.circusTent { --accent1: var(--blueDark); --accent2: var(--pinkLight); }
+.darkmode .circusTent, .darkmode.circusTent { --accent1: var(--pinkDark); --accent2: var(--blueLight); }
+
+.popsicleStick { --accent1: var(--blueDark); --accent2: var(--redDark); }
+.darkmode .popsicleStick, .darkmode.popsicleStick { --accent1: var(--redDark); --accent2: var(--blueDark); }
+
+.blueberryLemonade { --accent1: var(--blueDark); --accent2: var(--yellowLight); }
+.darkmode .blueberryLemonade, .darkmode.blueberryLemonade { --accent1: var(--yellowDark); --accent2: var(--blueLight); }
+
+.gamecubeController { --accent1: var(--blueDark); --accent2: var(--purpleLight); }
+.darkmode .gamecubeController, .darkmode.gamecubeController { --accent1: var(--purpleDark); --accent2: var(--blueLight); }
+
+.mulberryBush { --accent1: var(--purpleDark); --accent2: var(--redLight); }
+.darkmode .mulberryBush, .darkmode.mulberryBush { --accent1: var(--redDark); --accent2: var(--purpleLight); }
+
+.jokerBaby { --accent1: var(--purpleDark); --accent2: var(--greenLight); }
+.darkmode .jokerBaby, .darkmode.jokerBaby { --accent1: var(--greenDark); --accent2: var(--purpleLight); }
+
+.dixieCup { --accent1: var(--purpleDark); --accent2: var(--tealLight); }
+.darkmode .dixieCup, .darkmode.dixieCup { --accent1: var(--tealDark); --accent2: var(--purpleLight); }
+
+/* --- SPECIAL GROUPS (9) --- */
+.preciousMetals { --accent1: var(--beigeLight); --accent2: var(--notWhite); }
+.darkmode .preciousMetals, .darkmode.preciousMetals { --accent1: var(--beigeLight); --accent2: var(--silverMid); }
+
+.cyberPunk { --accent1: var(--silverMid); --accent2: var(--greenNeon); }
+.darkmode .cyberPunk, .darkmode.cyberPunk { --accent1: var(--greenNeon); --accent2: var(--silverMid); }
+
+.cyberPink { --accent1: var(--silverMid); --accent2: var(--pinkNeon); }
+.darkmode .cyberPink, .darkmode.cyberPink { --accent1: var(--pinkNeon); --accent2: var(--silverMid); }
+
+.sourCandies { --accent1: var(--pinkNeon); --accent2: var(--greenNeon); }
+.darkmode .sourCandies, .darkmode.sourCandies { --accent1: var(--greenNeon); --accent2: var(--pinkNeon); }
+
+.coffeeCake { --accent1: var(--brownDark); --accent2: var(--beigeLight); }
+.darkmode .coffeeCake, .darkmode.coffeeCake { --accent1: var(--beigeLight); --accent2: var(--brownDark); }
+
+.neaPolitan { --accent1: var(--brownDark); --accent2: var(--redLight); }
+.darkmode .neaPolitan, .darkmode.neaPolitan { --accent1: var(--pinkDark); --accent2: var(--brownDark); }
+
+.pikaPika { --accent1: var(--brownDark); --accent2: var(--yellowDark); }
+.darkmode .pikaPika, .darkmode.pikaPika { --accent1: var(--yellowDark); --accent2: var(--brownDark); }
+
+.camoGear { --accent1: var(--brownDark); --accent2: var(--greenDark); }
+.darkmode .camoGear, .darkmode.camoGear { --accent1: var(--greenDark); --accent2: var(--brownDark); }
+
+.peppermintPatty { --accent1: var(--brownDark); --accent2: var(--tealLight); }
+.darkmode .peppermintPatty, .darkmode.peppermintPatty { --accent1: var(--tealDark); --accent2: var(--brownDark); }
+
+/* --- MONOCHROME GROUPS (11) --- */
+.pastelGoth { --accent1: var(--bgInverse); --accent2: var(--pinkDark); }
+.vampireBlood { --accent1: var(--bgInverse); --accent2: var(--redDark); }
+.jackoLantern { --accent1: var(--bgInverse); --accent2: var(--orangeDark); }
+.bumbleBee { --accent1: var(--bgInverse); --accent2: var(--yellowDark); }
+.getSlimed { --accent1: var(--bgInverse); --accent2: var(--greenNeon); }
+.winterNight { --accent1: var(--bgInverse); --accent2: var(--tealLight); }
+.darkmode .winterNight, .darkmode.winterNight { --accent1: var(--bgInverse); --accent2: var(--tealDark); }
+
+.brutalistBlue { --accent1: var(--bgInverse); --accent2: var(--blueDark); }
+.witchingHour { --accent1: var(--bgInverse); --accent2: var(--purpleLight); }
+.darkmode .witchingHour, .darkmode.witchingHour { --accent1: var(--bgInverse); --accent2: var(--purpleDark); }
+
+.doberMann { --accent1: var(--bgInverse); --accent2: var(--brownDark); }
+.newsPrint { --accent1: var(--bgInverse); --accent2: var(--notWhite); }
+.paintBlack { --accent1: var(--bgInverse); --accent2: var(--bgInverse); }
+
+/* --- HOLIDAY GROUPS (8) --- */
+.thanksGiving { --accent1: var(--brownDark); --accent2: var(--orangeDark); }
+.darkmode .thanksGiving, .darkmode.thanksGiving { --accent1: var(--orangeDark); --accent2: var(--brownDark); }
+
+.halloWeen { --accent1: var(--orangeDark); --accent2: var(--purpleLight); }
+
+.stPatrick { --accent1: var(--greenDark); --accent2: var(--beigeLight); }
+.darkmode .stPatrick, .darkmode.stPatrick { --accent1: var(--beigeLight); --accent2: var(--greenDark); }
+
+.easTer { --accent1: var(--purpleLight); --accent2: var(--pinkLight); }
+.darkmode .easTer, .darkmode.easTer { --accent1: var(--pinkDark); --accent2: var(--purpleDark); }
+
+.newYear { --accent1: var(--yellowDark); --accent2: var(--redDark); }
+
+.kwanZaa { --accent1: var(--greenDark); --accent2: var(--redDark); }
+.darkmode .kwanZaa, .darkmode.kwanZaa { --accent1: var(--redDark); --accent2: var(--greenDark); }
+
+.valentinesDay { --accent1: var(--redDark); --accent2: var(--pinkLight); }
+.darkmode .valentinesDay, .darkmode.valentinesDay { --accent1: var(--pinkDark); --accent2: var(--redDark); }
+
+.hanuKkah { --accent1: var(--blueDark); --accent2: var(--notWhite); }
+.darkmode .hanuKkah, .darkmode.hanuKkah { --accent1: var(--notWhite); --accent2: var(--blueDark); }

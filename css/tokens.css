@@ -1,0 +1,129 @@
+/* ==========================================================================
+   TETRO DESIGN SYSTEM - DESIGN TOKENS & BASE VARIABLES
+   Derived and expanded from hyper-link-a-sandbox-concept
+   Clean, authentic flat brutalist design without blurry drop shadows
+   ========================================================================== */
+
+@font-face {
+  font-family: 'Boldone';
+  src: url('https://files.jcink.net/uploads2/leaptesting/Boldone.otf');
+  font-display: swap;
+}
+
+@font-face {
+  font-family: 'Starborn';
+  src: url('https://files.jcink.net/uploads2/leaptesting/Starborn.otf');
+  font-display: swap;
+}
+
+:root {
+  --fontSize: 14px;
+  --lineHeight: 22px;
+
+  /* Typography */
+  --titleFont: 'Poppins', 'Vazirmatn', -apple-system, BlinkMacSystemFont, sans-serif;
+  --bodyFont: 'Inter', 'Vazirmatn', -apple-system, BlinkMacSystemFont, sans-serif;
+  --monoFont: 'Courier New', 'Courier', monospace;
+  --starFont: 'Starborn', sans-serif;
+  --bubblyFont: 'Boldone', sans-serif;
+
+  /* Base Light Canvas */
+  --bg1: #e3e3e3;
+  --bg2: #d3d3d3;
+  --bg3: #dddddd;
+  --bgInverse: #333333;
+  --bgInverse2: #444444;
+
+  /* Dark Canvas */
+  --darkBg1: #242424;
+  --darkBg2: #1a1a1a;
+  --darkInverse1: #222222;
+  --darkInverse2: #333333;
+  --darkDarker: #151515;
+
+  /* Sepia Canvas */
+  --sepia1: #dedbd5;
+  --sepia2: #c2bab0;
+  --sepia3: #b3aaa1;
+
+  /* Standard Accent Palette */
+  --pinkDark: #e06594;
+  --pinkLight: #e39fb7;
+  --redDark: #c73854;
+  --redLight: #de6a7a;
+  --orangeDark: #d15f4d;
+  --orangeLight: #e6987e;
+  --yellowDark: #bd881e;
+  --yellowLight: #d9b86c;
+  --greenDark: #59804d;
+  --greenLight: #A6BF80;
+  --tealDark: #2a848c;
+  --tealLight: #79baba;
+  --blueDark: #6265b3;
+  --blueLight: #8b9be0;
+  --purpleDark: #8451A6;
+  --purpleLight: #b78ac2;
+
+  /* Special / Neon / Earth Palette */
+  --silverMid: #8696b3;
+  --notWhite: #b0b0b0;
+  --brownDark: #735750;
+  --beigeLight: #b39f7d;
+  --pinkNeon: #e6478e;
+  --greenNeon: #65bd42;
+
+  /* Status Colors */
+  --tickUp: #10b981;
+  --tickDown: #ef4444;
+
+  /* Default Accents */
+  --accent1: var(--redDark);
+  --accent2: var(--greenLight);
+
+  /* Transitions & Patterns */
+  --transition: 0.15s ease;
+  --stripe1: repeating-linear-gradient(-45deg, var(--accent1) 0px 4px, transparent 4px 8px);
+  --stripe2: repeating-linear-gradient(-45deg, var(--accent2) 0px 4px, transparent 4px 8px);
+  --stripeInverse: repeating-linear-gradient(-45deg, var(--bgInverse) 0px 3px, transparent 3px 5px);
+
+  /* Touch & Layout Sizing */
+  --minTouchSize: 48px;
+  --sidebarWidth: 90px;
+  --slantWidth: 16px;
+  --radiusSm: 0px;
+  --radiusMd: 0px;
+
+  /* Flat Brutalist (No Drop Shadows) */
+  --shadowOffset: none;
+}
+
+/* Base Body Styles */
+*, *::before, *::after {
+  box-sizing: border-box;
+}
+
+body {
+  margin: 0;
+  padding: 0;
+  background-color: var(--bg1);
+  color: var(--bgInverse);
+  font-family: var(--bodyFont);
+  font-size: var(--fontSize);
+  line-height: var(--lineHeight);
+  -webkit-font-smoothing: antialiased;
+  -moz-osx-font-smoothing: grayscale;
+  overflow-x: hidden;
+  transition: background-color var(--transition), color var(--transition);
+}
+
+a {
+  text-decoration: none;
+  color: var(--accent1);
+}
+
+button {
+  font-family: inherit;
+  cursor: pointer;
+  border: none;
+  background: none;
+}

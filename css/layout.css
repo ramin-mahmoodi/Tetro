@@ -1,0 +1,414 @@
+/* ==========================================================================
+   TETRO DESIGN SYSTEM - LAYOUT & RESPONSIVE GRID
+   Brutalist desktop side-rail + mobile touch navigation & drawer
+   ========================================================================== */
+
+#hyp-color {
+  min-height: 100vh;
+  width: 100%;
+  max-width: 100%;
+  overflow-x: hidden;
+  background-color: var(--bg1);
+}
+
+/* Master Grid Container */
+.hyp {
+  display: grid;
+  grid-template-columns: 100px 18px 1fr;
+  min-height: 100vh;
+  width: 100%;
+  background-color: var(--bg1);
+  color: var(--bgInverse);
+}
+
+/* --------------------------------------------------------------------------
+   DESKTOP SIDE-RAIL NAVIGATION (Iconic brutalist rail from reference)
+   -------------------------------------------------------------------------- */
+.hyp-menu {
+  background-color: var(--bgInverse);
+  position: sticky;
+  top: 0;
+  height: 100vh;
+  z-index: 100;
+  color: var(--bg1);
+  padding: 30px 15px;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: space-between;
+  box-sizing: border-box;
+}
+
+/* Big Menu Trigger Block */
+.hyp-menu-click {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  cursor: pointer;
+  width: 60px;
+  margin-bottom: 20px;
+  transition: transform var(--transition);
+}
+.hyp-menu-click:active {
+  transform: scale(0.96);
+}
+
+.hyp-menu-click1 {
+  position: relative;
+  box-sizing: border-box;
+  width: 54px;
+  height: 54px;
+  background-color: var(--accent2);
+  background-image: repeating-linear-gradient(-45deg, transparent 0px 2px, var(--bgInverse) 2px 5px);
+  margin-bottom: 6px;
+  transition: background-color var(--transition);
+}
+.hyp-menu-click1::before,
+.hyp-menu-click1::after {
+  content: '';
+  display: block;
+  background-color: var(--bgInverse2);
+  position: absolute;
+}
+.hyp-menu-click1::before {
+  height: 9px;
+  width: 5px;
+  top: 0;
+  right: -7px;
+}
+.hyp-menu-click1::after {
+  height: 5px;
+  width: 9px;
+  left: 0;
+  bottom: -7px;
+}
+
+.hyp-menu-click2 {
+  background-color: var(--bgInverse);
+  margin: 6px -8px -8px 6px;
+  width: 100%;
+  height: 100%;
+  padding: 4px;
+  box-sizing: border-box;
+}
+.hyp-menu-click2 div {
+  height: 100%;
+  width: 100%;
+  background-color: var(--bg2);
+  color: var(--bgInverse);
+  display: flex;
+  justify-content: center;
+  align-items: center;
+  overflow: hidden;
+}
+.hyp-menu-click2 i {
+  font-size: 26px;
+  color: var(--accent1);
+  transition: color var(--transition);
+}
+.rail-brand-icon {
+  width: 34px;
+  height: 34px;
+  display: block;
+  object-fit: contain;
+  transition: transform var(--transition);
+}
+.hyp-menu-click:hover .rail-brand-icon {
+  transform: scale(1.08);
+}
+.hyp-menu-click:hover .hyp-menu-click1 {
+  background-color: var(--accent1);
+}
+.hyp-menu-click:hover .hyp-menu-click2 i {
+  color: var(--accent2);
+}
+
+.hyp-menu-click3 {
+  background-color: var(--bgInverse2);
+  padding: 3px 6px;
+  text-align: center;
+  color: var(--bg1);
+  font: 800 11px / 14px var(--titleFont);
+  letter-spacing: 1px;
+  text-transform: uppercase;
+  width: 100%;
+  box-sizing: border-box;
+}
+
+/* Nav Links Rail */
+.hyp-menu-divide {
+  flex-grow: 1;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 15px;
+  width: 100%;
+}
+.hyp-menu-divide div {
+  flex-grow: 1;
+  width: 1px;
+  background-color: var(--bgInverse2);
+}
+
+.hyp-menu-links {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 16px;
+}
+.hyp-menu-links a,
+.hyp-menu-links button {
+  color: var(--bg2);
+  font-size: 24px;
+  padding: 10px;
+  min-height: 48px;
+  min-width: 48px;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  position: relative;
+  transition: color var(--transition), transform var(--transition);
+  border-radius: 4px;
+}
+.hyp-menu-links a:hover,
+.hyp-menu-links button:hover,
+.hyp-menu-links a.active {
+  color: var(--accent2);
+  transform: translateY(-2px);
+}
+.hyp-menu-links .notif-badge {
+  position: absolute;
+  top: 4px;
+  right: 4px;
+  background-color: var(--accent1);
+  color: var(--bg1);
+  font: 800 9px/10px var(--bodyFont);
+  padding: 2px 4px;
+  border-radius: 2px;
+}
+
+/* Brand Rotated Label (Bottom Rail) */
+.hyp-menu-brand {
+  writing-mode: vertical-rl;
+  transform: rotate(180deg);
+  font: 900 15px/16px var(--titleFont);
+  letter-spacing: 3px;
+  color: var(--bg2);
+  text-transform: uppercase;
+  padding: 10px 0;
+}
+.hyp-menu-brand b {
+  color: var(--accent2);
+}
+
+/* Slant Diagonal Accent Bar */
+.hyp-slant {
+  background-color: var(--bg1);
+  background: var(--stripe2);
+  position: sticky;
+  top: 0;
+  height: 100vh;
+  z-index: 90;
+  transition: background var(--transition);
+}
+
+/* --------------------------------------------------------------------------
+   MAIN BODY & DASHBOARD CANVAS
+   -------------------------------------------------------------------------- */
+.hyp-body {
+  height: 100vh;
+  overflow-y: auto;
+  overflow-x: hidden;
+  scrollbar-width: thin;
+  scrollbar-color: var(--accent1) var(--bg1);
+  box-sizing: border-box;
+}
+
+.hyp-wrapper {
+  margin: 0 auto;
+  padding: 40px 50px 80px 50px;
+  width: 100%;
+  max-width: 1600px;
+  box-sizing: border-box;
+}
+
+/* Mobile-only Elements (hidden on desktop) */
+.mobile-header {
+  display: none;
+}
+.mobile-nav {
+  display: none;
+}
+
+/* --------------------------------------------------------------------------
+   RESPONSIVE BREAKPOINTS (Mobile & Tablet Optimization)
+   -------------------------------------------------------------------------- */
+
+/* Tablet & Smaller Desktops */
+@media (max-width: 1100px) {
+  .hyp {
+    grid-template-columns: 80px 14px 1fr;
+  }
+  .hyp-wrapper {
+    padding: 30px 25px 80px 25px;
+  }
+}
+
+/* Mobile Screen Breakpoint (< 860px) */
+@media (max-width: 860px) {
+  .hyp {
+    display: block;
+    min-height: auto;
+  }
+
+  /* Hide Desktop Rail & Slant on Mobile */
+  .hyp-menu {
+    display: none;
+  }
+  .hyp-slant {
+    display: none;
+  }
+
+  .hyp-body {
+    height: auto;
+    overflow-y: visible;
+  }
+
+  .hyp-wrapper {
+    padding: 16px 16px 96px 16px;
+    width: 100%;
+    max-width: 100%;
+    box-sizing: border-box;
+  }
+
+  /* Top Mobile Header */
+  .mobile-header {
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    background-color: var(--bgInverse);
+    color: var(--bg1);
+    padding: 12px 16px;
+    position: sticky;
+    top: 0;
+    z-index: 200;
+    border-bottom: 2px solid var(--accent1);
+    box-sizing: border-box;
+    width: 100%;
+  }
+
+  .mobile-brand {
+    display: flex;
+    align-items: center;
+    gap: 8px;
+    font: 900 18px / 18px var(--titleFont);
+    text-transform: uppercase;
+    letter-spacing: 1px;
+    direction: ltr;
+  }
+  .mobile-brand .badge {
+    font-size: 10px;
+    padding: 2px 6px;
+    background-color: var(--accent1);
+    color: var(--bg1);
+    font-weight: 800;
+  }
+
+  .mobile-header-actions {
+    display: flex;
+    align-items: center;
+    gap: 6px;
+  }
+
+  .mobile-update-box,
+  .mobile-currency-selector {
+    flex: 1 1 0;
+    width: 106px;
+    max-width: 112px;
+    height: 36px !important;
+    box-sizing: border-box;
+  }
+
+  .mobile-update-box {
+    display: inline-flex !important;
+    align-items: center;
+    justify-content: center;
+    gap: 4px;
+    padding: 0 4px;
+    background-color: var(--bg2);
+    border: 1px solid var(--bgInverse2);
+    color: var(--bgInverse);
+    font-size: 10px;
+    white-space: nowrap;
+  }
+
+  .mobile-currency-selector {
+    display: flex;
+    background-color: var(--bg2);
+    border: 1px solid var(--bgInverse2);
+    padding: 2px;
+  }
+
+  .mobile-currency-selector .currency-btn {
+    flex: 1;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    padding: 0;
+    min-height: 0;
+    height: 100%;
+    font: 800 11px/1 var(--titleFont);
+    color: var(--bgInverse);
+    background: transparent;
+    border: none;
+    cursor: pointer;
+    transition: all var(--transition);
+  }
+
+  .mobile-currency-selector .currency-btn.active {
+    background-color: var(--bgInverse);
+    color: var(--bg1);
+  }
+
+  .desktop-only,
+  .hyp-ban {
+    display: none !important;
+  }
+
+  /* Bottom Touch Navigation Bar (Fixed for quick 1-thumb touch) */
+  .mobile-nav {
+    display: grid;
+    grid-template-columns: repeat(4, 1fr);
+    position: fixed;
+    bottom: 0;
+    left: 0;
+    right: 0;
+    height: 64px;
+    background-color: var(--bgInverse);
+    border-top: 3px solid var(--accent1);
+    z-index: 300;
+    padding-bottom: env(safe-area-inset-bottom, 0px);
+  }
+
+  .mobile-nav-item {
+    display: flex;
+    flex-direction: column;
+    align-items: center;
+    justify-content: center;
+    gap: 4px;
+    color: var(--bg2);
+    font: 800 11px/11px var(--titleFont);
+    text-transform: uppercase;
+    cursor: pointer;
+    min-height: 48px;
+    transition: color var(--transition);
+  }
+  .mobile-nav-item i {
+    font-size: 22px;
+  }
+  .mobile-nav-item.active,
+  .mobile-nav-item:active {
+    color: var(--accent2);
+    background-color: rgba(255,255,255,0.05);
+  }
+}

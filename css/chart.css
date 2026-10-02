@@ -1,0 +1,303 @@
+/* ==========================================================================
+   TETRO DESIGN SYSTEM - INTERACTIVE CHART STYLES
+   Theme-reactive canvas chart with touch dragging and timeframe selector
+   Clean flat retro-brutalist styling without box shadows
+   ========================================================================== */
+
+.chart-section {
+  background-color: var(--bg2);
+  border: 1px solid var(--bgInverse);
+  padding: 24px;
+  margin-bottom: 35px;
+  position: relative;
+}
+
+.chart-section::before {
+  content: '';
+  position: absolute;
+  top: 0;
+  left: 0;
+  right: 0;
+  height: 4px;
+  background: var(--stripe2);
+}
+
+.chart-header {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  flex-wrap: wrap;
+  gap: 16px;
+  margin-bottom: 20px;
+  padding-bottom: 16px;
+  border-bottom: 1px dashed var(--bgInverse2);
+}
+
+.chart-title-wrap {
+  display: flex;
+  flex-direction: column;
+}
+
+.chart-title {
+  font: 900 20px/22px var(--titleFont);
+  text-transform: uppercase;
+  color: var(--bgInverse);
+  letter-spacing: 0.5px;
+  display: flex;
+  align-items: center;
+  gap: 8px;
+}
+
+.chart-subinfo {
+  font: 700 12px/14px var(--monoFont);
+  color: var(--bgInverse);
+  opacity: 0.8;
+  margin-top: 4px;
+}
+
+/* Timeframe and Source Selectors */
+.chart-controls {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  flex-wrap: wrap;
+}
+
+.chart-source-select {
+  background-color: var(--bg1);
+  border: 1px solid var(--bgInverse);
+  color: var(--bgInverse);
+  font: 800 12px var(--titleFont);
+  padding: 8px 12px;
+  min-height: 44px;
+  outline: none;
+  cursor: pointer;
+  text-transform: uppercase;
+}
+
+.chart-type-group {
+  display: flex;
+  background-color: var(--bg1);
+  border: 1px solid var(--bgInverse);
+  padding: 2px;
+}
+
+.type-btn {
+  padding: 8px 12px;
+  min-height: 40px;
+  font: 900 12px/12px var(--titleFont);
+  text-transform: uppercase;
+  background: transparent;
+  color: var(--bgInverse);
+  border: none;
+  cursor: pointer;
+  display: inline-flex;
+  align-items: center;
+  gap: 5px;
+  transition: all var(--transition);
+}
+
+.type-btn i {
+  font-size: 14px;
+}
+
+.type-btn:hover {
+  background-color: rgba(0,0,0,0.05);
+}
+
+.type-btn.active {
+  background-color: var(--bgInverse);
+  color: var(--bg1);
+}
+
+.timeframe-wrapper {
+  display: inline-flex;
+  align-items: center;
+}
+
+.desktop-tf-group {
+  display: flex !important;
+  background-color: var(--bg1);
+  border: 1px solid var(--bgInverse);
+  padding: 2px;
+}
+
+.tf-btn {
+  padding: 8px 14px;
+  min-height: 40px;
+  min-width: 44px;
+  font: 900 12px/12px var(--titleFont);
+  text-transform: uppercase;
+  background: transparent;
+  color: var(--bgInverse);
+  border: none;
+  cursor: pointer;
+  transition: all var(--transition);
+}
+
+.tf-btn:hover {
+  background-color: rgba(0,0,0,0.05);
+}
+
+.tf-btn.active {
+  background-color: var(--accent1);
+  color: var(--bg1);
+}
+
+.mobile-tf-select {
+  display: none !important;
+  background-color: var(--bg1);
+  border: 1px solid var(--bgInverse);
+  color: var(--bgInverse);
+  font: 900 12px/12px var(--titleFont);
+  padding: 8px 12px;
+  height: 44px;
+  outline: none;
+  cursor: pointer;
+  text-transform: uppercase;
+}
+
+/* Canvas Viewport */
+.chart-viewport {
+  position: relative;
+  width: 100%;
+  height: 340px;
+  touch-action: pan-y;
+  cursor: crosshair;
+}
+
+@media (max-width: 768px) {
+  .chart-section {
+    padding: 14px;
+  }
+  .chart-viewport {
+    height: 250px;
+  }
+  .chart-header {
+    flex-direction: column;
+    align-items: stretch;
+    gap: 12px;
+    margin-bottom: 18px;
+    padding-bottom: 14px;
+  }
+  .chart-controls {
+    display: flex;
+    flex-direction: row;
+    flex-wrap: nowrap !important; /* Strictly ONE single row */
+    align-items: center;
+    justify-content: space-between;
+    gap: 6px;
+    width: 100%;
+    margin-bottom: 4px;
+  }
+  .chart-source-select {
+    flex: 1 1 auto;
+    min-width: 0;
+    height: 38px;
+    min-height: 38px;
+    padding: 4px 6px;
+    font-size: 11px;
+    font-weight: 800;
+  }
+  .chart-type-group {
+    flex: 0 0 auto;
+    display: flex;
+    height: 38px;
+    padding: 2px;
+  }
+  .type-btn {
+    min-height: 32px;
+    padding: 4px 6px;
+    font-size: 11px;
+    gap: 3px;
+  }
+  .type-btn i {
+    font-size: 13px;
+  }
+  .timeframe-wrapper {
+    flex: 0 0 auto;
+    display: flex;
+  }
+  .desktop-tf-group {
+    display: none !important;
+  }
+  .mobile-tf-select {
+    display: block !important;
+    width: 66px;
+    height: 38px;
+    min-height: 38px;
+    padding: 4px 6px;
+    font-size: 12px;
+    font-weight: 900;
+    text-align: center;
+    direction: ltr;
+  }
+}
+
+.chart-canvas {
+  width: 100%;
+  height: 100%;
+  display: block;
+}
+
+/* Floating Crosshair Tooltip */
+.chart-tooltip {
+  position: absolute;
+  pointer-events: none;
+  background-color: var(--bgInverse);
+  color: var(--bg1);
+  border: 1px solid var(--accent2);
+  padding: 8px 12px;
+  font: 800 11px/14px var(--monoFont);
+  display: none;
+  z-index: 10;
+  white-space: nowrap;
+  transform: translate(-50%, -120%);
+  min-width: 145px;
+}
+
+.chart-tooltip-header {
+  font-size: 11px;
+  opacity: 0.85;
+  margin-bottom: 5px;
+  padding-bottom: 4px;
+  border-bottom: 1px dashed var(--bgInverse2);
+}
+
+.chart-tooltip-price {
+  font-size: 14px;
+  color: var(--accent2);
+  font-weight: 900;
+}
+
+.candle-tooltip-grid {
+  display: grid;
+  grid-template-columns: 1fr 1fr;
+  gap: 3px 10px;
+  font-size: 11px;
+  margin-top: 4px;
+}
+
+.candle-tooltip-grid span {
+  opacity: 0.75;
+}
+
+.candle-tooltip-grid b {
+  font-family: var(--monoFont);
+}
+
+.chart-footer {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  flex-wrap: wrap;
+  gap: 10px;
+  margin-top: 14px;
+  font: 700 11px/12px var(--monoFont);
+  opacity: 0.75;
+}
+
+.chart-range-stats {
+  display: flex;
+  gap: 16px;
+}

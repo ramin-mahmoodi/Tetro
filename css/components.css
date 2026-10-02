@@ -1,0 +1,978 @@
+/* ==========================================================================
+   TETRO DESIGN SYSTEM - BRUTALIST COMPONENTS & UI WIDGETS
+   Authentic flat styling without drop shadows
+   Header with elegant typography, single-row exchange table & mini sparklines
+   ========================================================================== */
+
+/* --------------------------------------------------------------------------
+   RETRO BANNER & HERO SECTION
+   -------------------------------------------------------------------------- */
+.hyp-ban {
+  width: 100%;
+  margin-bottom: 30px;
+}
+
+.hyp-banner-top {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  flex-wrap: wrap;
+  gap: 15px;
+  padding-bottom: 14px;
+  border-bottom: 2px solid var(--bgInverse);
+  position: relative;
+}
+
+.hyp-banner-top::after {
+  content: '';
+  position: absolute;
+  bottom: -2px;
+  right: 0;
+  width: 160px;
+  height: 4px;
+  background-color: var(--accent1);
+}
+
+.hyp-banner-sub-group {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  flex-wrap: wrap;
+}
+
+.hyp-banner-sub {
+  display: inline-flex;
+  align-items: center;
+  gap: 8px;
+  font: 900 12px / 14px var(--titleFont);
+  text-transform: uppercase;
+  background-color: var(--bg2);
+  padding: 6px 12px;
+  border: 1px solid var(--bgInverse);
+}
+
+.hyp-banner-sub b {
+  background-color: var(--bgInverse);
+  color: var(--bg1);
+  padding: 2px 6px;
+  font-size: 11px;
+  letter-spacing: 0.5px;
+}
+
+.pulse-dot {
+  width: 8px;
+  height: 8px;
+  border-radius: 50%;
+  background-color: var(--accent2);
+}
+
+/* Header Action Group: Last Update Box + Currency Switcher */
+.header-action-group {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+}
+
+.last-update-box {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  gap: 6px;
+  width: 130px;
+  height: 44px;
+  box-sizing: border-box;
+  background-color: var(--bg2);
+  border: 1px solid var(--bgInverse);
+  color: var(--bgInverse);
+  font: 800 11px/1 var(--titleFont);
+  white-space: nowrap;
+  user-select: none;
+  cursor: default;
+}
+
+@media (max-width: 860px) {
+  .last-update-box.mobile-update-box {
+    width: 106px !important;
+    height: 36px !important;
+    max-width: 112px !important;
+    font-size: 10px !important;
+    gap: 4px !important;
+    padding: 0 4px !important;
+  }
+}
+
+.last-update-box i {
+  font-size: 14px;
+  color: var(--accent1);
+}
+
+.last-update-text {
+  font-family: 'Vazirmatn', var(--titleFont), sans-serif;
+  font-weight: 800;
+  letter-spacing: -0.2px;
+}
+
+/* Currency & Units Switcher */
+.currency-selector {
+  display: flex;
+  width: 130px;
+  height: 44px;
+  box-sizing: border-box;
+  background-color: var(--bg2);
+  border: 1px solid var(--bgInverse);
+  padding: 2px;
+}
+
+.currency-btn {
+  flex: 1;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  padding: 0;
+  min-height: 0;
+  height: 100%;
+  font: 800 12px/1 var(--titleFont);
+  text-transform: uppercase;
+  color: var(--bgInverse);
+  background: transparent;
+  border: 1px solid transparent;
+  cursor: pointer;
+  transition: all var(--transition);
+}
+
+.currency-btn:hover {
+  background-color: rgba(0,0,0,0.05);
+}
+
+.currency-btn.active {
+  background-color: var(--bgInverse);
+  color: var(--bg1);
+  border-color: var(--accent1);
+}
+
+/* --------------------------------------------------------------------------
+   TOP METRIC CARDS (Aggregate Price, 24h High/Low, Volume)
+   Flat Brutalist with striped accent bar
+   -------------------------------------------------------------------------- */
+.metrics-grid {
+  display: grid;
+  grid-template-columns: 1.8fr 1fr 1fr 1fr;
+  gap: 16px;
+  margin-bottom: 30px;
+}
+
+@media (max-width: 1024px) and (min-width: 861px) {
+  .metrics-grid {
+    grid-template-columns: 1fr 1fr;
+  }
+}
+
+@media (max-width: 860px) {
+  .metrics-grid {
+    grid-template-columns: 1fr 1fr;
+    gap: 10px;
+    margin-bottom: 22px;
+  }
+  .metric-card.hero-metric {
+    grid-column: 1 / -1;
+    padding: 14px 16px;
+  }
+  .metric-card:not(.hero-metric) {
+    padding: 12px 14px;
+  }
+  .metric-card:not(.hero-metric) .metric-label {
+    font-size: 11px;
+    white-space: nowrap;
+    overflow: hidden;
+    text-overflow: ellipsis;
+  }
+  .metric-card:not(.hero-metric) .metric-value {
+    font-size: 18px;
+    margin: 6px 0 2px 0;
+  }
+  .metric-card:not(.hero-metric) .metric-sub {
+    font-size: 11px;
+    display: block;
+    opacity: 0.75;
+  }
+  .metric-card:nth-child(4) {
+    grid-column: 1 / -1;
+  }
+}
+
+.metric-card {
+  background-color: var(--bg2);
+  border: 1px solid var(--bgInverse);
+  padding: 16px 18px;
+  position: relative;
+  display: flex;
+  flex-direction: column;
+  justify-content: space-between;
+  overflow: hidden;
+  transition: background-color var(--transition);
+}
+
+.metric-card::before {
+  content: '';
+  position: absolute;
+  top: 0;
+  left: 0;
+  right: 0;
+  height: 3px;
+  background: var(--stripe1);
+}
+
+.metric-card.hero-metric {
+  background-color: var(--bgInverse);
+  color: var(--bg1);
+  border-color: var(--bgInverse);
+}
+.metric-card.hero-metric::before {
+  background: var(--stripe2);
+}
+
+.metric-label {
+  font: 800 11px/12px var(--titleFont);
+  text-transform: uppercase;
+  letter-spacing: 0.5px;
+  opacity: 0.85;
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+}
+
+.metric-value {
+  font: 900 30px/34px var(--titleFont);
+  letter-spacing: -0.5px;
+  margin: 10px 0 4px 0;
+  display: flex;
+  align-items: baseline;
+  gap: 6px;
+}
+
+.metric-sub {
+  font: 600 12px/14px var(--bodyFont);
+  display: flex;
+  align-items: center;
+  gap: 6px;
+}
+
+.change-badge {
+  display: inline-flex;
+  align-items: center;
+  gap: 4px;
+  padding: 3px 8px;
+  font: 800 11px/12px var(--monoFont);
+  direction: ltr;
+}
+
+.change-badge.positive {
+  background-color: #10b981;
+  color: #ffffff;
+}
+
+.change-badge.negative {
+  background-color: #ef4444;
+  color: #ffffff;
+}
+
+/* --------------------------------------------------------------------------
+   EXCHANGES SECTION: 1 ROW PER EXCHANGE (FULL WIDTH TABLE LIST)
+   With 24h mini sparkline canvas in each row!
+   -------------------------------------------------------------------------- */
+.section-header {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  flex-wrap: wrap;
+  gap: 14px;
+  margin: 35px 0 16px 0;
+  padding-bottom: 12px;
+  border-bottom: 2px solid var(--bgInverse);
+}
+
+.section-title {
+  font: 900 22px/22px var(--titleFont);
+  text-transform: uppercase;
+  letter-spacing: 1px;
+  display: flex;
+  align-items: center;
+  gap: 10px;
+}
+.section-title i {
+  color: var(--accent1);
+}
+
+/* Filter Controls */
+.filter-controls {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  flex-wrap: wrap;
+}
+
+.search-input {
+  background-color: var(--bg2);
+  border: 1px solid var(--bgInverse);
+  color: var(--bgInverse);
+  font: 700 13px var(--bodyFont);
+  padding: 8px 12px;
+  min-height: 40px;
+  min-width: 170px;
+  outline: none;
+}
+.search-input:focus {
+  border-color: var(--accent1);
+}
+
+.sort-select {
+  background-color: var(--bg2);
+  border: 1px solid var(--bgInverse);
+  color: var(--bgInverse);
+  font: 800 12px var(--titleFont);
+  padding: 8px 12px;
+  min-height: 40px;
+  outline: none;
+  cursor: pointer;
+  text-transform: uppercase;
+}
+
+/* The Exchanges Table Container */
+.exchanges-table-container {
+  width: 100%;
+  border: 1px solid var(--bgInverse);
+  background-color: var(--bg1);
+  margin-bottom: 40px;
+}
+
+/* Desktop Header Row */
+.exchanges-table-head {
+  display: grid;
+  grid-template-columns: 210px 140px 1.2fr 1.2fr 110px 145px;
+  background-color: var(--bgInverse);
+  color: var(--bg1);
+  padding: 12px 18px;
+  font: 800 11px/12px var(--titleFont);
+  text-transform: uppercase;
+  letter-spacing: 0.5px;
+  border-bottom: 2px solid var(--accent1);
+  align-items: center;
+}
+
+/* Individual Exchange Row (Desktop: 1 Full-Width Row Per Exchange) */
+.exchange-row {
+  display: grid;
+  grid-template-columns: 210px 140px 1.2fr 1.2fr 110px 145px;
+  padding: 14px 18px;
+  background-color: var(--bg2);
+  border-bottom: 1px solid var(--bgInverse);
+  align-items: center;
+  transition: background-color var(--transition);
+}
+
+.exchange-row:nth-child(even) {
+  background-color: var(--bg1);
+}
+
+.exchange-row:hover {
+  background-color: rgba(0,0,0,0.04);
+}
+
+/* Column 1: Exchange Info */
+.ex-col-info {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+}
+
+.ex-avatar {
+  width: 36px;
+  height: 36px;
+  background-color: var(--bgInverse);
+  color: var(--bg1);
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  font: 900 13px/13px var(--titleFont);
+  border: 1px solid var(--accent2);
+  flex-shrink: 0;
+}
+
+.ex-name-box {
+  display: flex;
+  flex-direction: column;
+}
+
+.ex-name-eng {
+  font: 900 15px/16px var(--titleFont);
+  color: var(--bgInverse);
+}
+
+.ex-name-fa {
+  font: 600 12px/14px var(--bodyFont);
+  opacity: 0.75;
+}
+
+/* Column 2: Mini Sparkline Canvas */
+.ex-col-sparkline {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+}
+
+.sparkline-canvas {
+  width: 120px;
+  height: 36px;
+  display: block;
+}
+
+/* Columns 3 & 4: Rates */
+.ex-col-rate {
+  display: flex;
+  flex-direction: row;
+  align-items: baseline;
+  gap: 6px;
+  white-space: nowrap;
+}
+
+.rate-label {
+  display: none;
+}
+
+.rate-num {
+  font: 900 16px/18px var(--monoFont);
+  color: var(--bgInverse);
+  letter-spacing: -0.5px;
+  display: inline-block;
+  padding: 2px 2px;
+}
+
+.rate-sub {
+  font: 600 11px/12px var(--bodyFont);
+  opacity: 0.7;
+  margin: 0;
+}
+
+/* Column 5: Change */
+.ex-col-change {
+  display: flex;
+  align-items: center;
+}
+
+/* Column 6: High / Low Range */
+.ex-col-range {
+  font: 700 11px/13px var(--monoFont);
+  display: flex;
+  flex-direction: column;
+  opacity: 0.85;
+}
+
+.range-stat {
+  display: flex;
+  align-items: baseline;
+  gap: 4px;
+}
+
+.range-lbl {
+  opacity: 0.7;
+}
+
+.range-val {
+  font-weight: 800;
+}
+
+.range-divider {
+  display: none;
+}
+
+/* Price Flash Animations */
+.tick-flash-up {
+  animation: flashGreen 0.9s ease;
+}
+.tick-flash-down {
+  animation: flashRed 0.9s ease;
+}
+
+@keyframes flashGreen {
+  0% { background-color: rgba(16, 185, 129, 0.4); color: #047857; }
+  100% { background-color: transparent; }
+}
+
+@keyframes flashRed {
+  0% { background-color: rgba(239, 68, 68, 0.4); color: #b91c1c; }
+  100% { background-color: transparent; }
+}
+
+/* --------------------------------------------------------------------------
+   RESPONSIVE CARD ADAPTATION (Mobile <= 860px)
+   Balanced, clean brutalist cards with no empty whitespace
+   -------------------------------------------------------------------------- */
+@media (max-width: 860px) {
+  .section-header {
+    flex-direction: column;
+    align-items: stretch;
+    gap: 12px;
+    margin: 24px 0 14px 0;
+  }
+
+  .filter-controls {
+    display: grid;
+    grid-template-columns: 1fr 140px;
+    gap: 8px;
+    width: 100%;
+  }
+
+  .search-input {
+    width: 100%;
+    min-width: 0;
+    min-height: 42px;
+  }
+
+  .sort-select {
+    width: 100%;
+    min-width: 0;
+    min-height: 42px;
+  }
+
+  .exchanges-table-container {
+    border: none;
+    background: transparent;
+    display: flex;
+    flex-direction: column;
+    gap: 12px;
+    margin-bottom: 30px;
+  }
+
+  .exchanges-table-head {
+    display: none;
+  }
+
+  /* Mobile Card: Balanced Grid Layout */
+  .exchange-row {
+    display: grid;
+    grid-template-areas:
+      "info   change"
+      "buy    chart"
+      "sell   chart"
+      "range  range";
+    grid-template-columns: 1fr 125px;
+    grid-template-rows: auto auto auto auto;
+    row-gap: 8px;
+    column-gap: 12px;
+    padding: 14px;
+    border: 1px solid var(--bgInverse);
+    background-color: var(--bg2);
+    align-items: center;
+  }
+
+  .exchange-row:nth-child(even) {
+    background-color: var(--bg1);
+  }
+
+  .exchange-row:last-child {
+    border-bottom: 1px solid var(--bgInverse);
+  }
+
+  /* 1. Info: Avatar + Names */
+  .ex-col-info {
+    grid-area: info;
+    display: flex;
+    align-items: center;
+    gap: 10px;
+  }
+
+  .ex-col-info .ex-avatar {
+    width: 32px;
+    height: 32px;
+    font-size: 11px;
+    flex-shrink: 0;
+  }
+
+  .ex-col-info .ex-name-box {
+    display: flex;
+    flex-direction: column;
+    gap: 1px;
+  }
+
+  .ex-col-info .ex-name-eng {
+    font: 900 14px/15px var(--titleFont);
+    color: var(--bgInverse);
+  }
+
+  .ex-col-info .ex-name-fa {
+    font: 600 11px/12px var(--bodyFont);
+    opacity: 0.75;
+  }
+
+  /* 2. Change Badge: Aligned to outer edge */
+  .ex-col-change {
+    grid-area: change;
+    display: flex;
+    justify-content: flex-end;
+    align-items: center;
+  }
+
+  .ex-col-change .change-badge {
+    padding: 3px 8px;
+    font: 800 11px/12px var(--monoFont);
+  }
+
+  /* 3. Buy Price (Single horizontal line) */
+  .ex-col-buy {
+    grid-area: buy;
+    display: flex !important;
+    flex-direction: row !important;
+    align-items: baseline;
+    gap: 6px;
+    white-space: nowrap;
+  }
+
+  .ex-col-buy .rate-label {
+    display: inline-block;
+    font: 700 12px/12px var(--bodyFont);
+    color: var(--bgInverse);
+    opacity: 0.75;
+    min-width: 34px;
+    margin: 0;
+  }
+
+  .ex-col-buy .rate-num {
+    font: 900 16px/16px var(--monoFont);
+    color: var(--bgInverse);
+    letter-spacing: -0.5px;
+    padding: 0;
+    margin: 0;
+    display: inline-block;
+  }
+
+  .ex-col-buy .rate-sub {
+    font: 700 11px/11px var(--bodyFont);
+    opacity: 0.7;
+    margin: 0;
+    display: inline-block;
+  }
+
+  /* 4. Sell Price (Single horizontal line) */
+  .ex-col-sell {
+    grid-area: sell;
+    display: flex !important;
+    flex-direction: row !important;
+    align-items: baseline;
+    gap: 6px;
+    white-space: nowrap;
+  }
+
+  .ex-col-sell .rate-label {
+    display: inline-block;
+    font: 700 12px/12px var(--bodyFont);
+    color: var(--bgInverse);
+    opacity: 0.75;
+    min-width: 34px;
+    margin: 0;
+  }
+
+  .ex-col-sell .rate-num {
+    font: 900 15px/15px var(--monoFont);
+    color: var(--bgInverse);
+    letter-spacing: -0.5px;
+    padding: 0;
+    margin: 0;
+    opacity: 0.85;
+    display: inline-block;
+  }
+
+  .ex-col-sell .rate-sub {
+    font: 700 11px/11px var(--bodyFont);
+    opacity: 0.7;
+    margin: 0;
+    display: inline-block;
+  }
+
+  /* 5. Mini Sparkline Chart */
+  .ex-col-sparkline {
+    grid-area: chart;
+    display: flex;
+    align-items: center;
+    justify-content: flex-end;
+    width: 100%;
+  }
+
+  .ex-col-sparkline .sparkline-canvas {
+    width: 120px;
+    height: 44px;
+    display: block;
+  }
+
+  /* 6. High / Low Footer */
+  .ex-col-range {
+    grid-area: range;
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    flex-direction: row;
+    padding-top: 8px;
+    margin-top: 4px;
+    border-top: 1px dashed var(--bgInverse2);
+    font: 700 11px/12px var(--monoFont);
+    color: var(--bgInverse);
+    opacity: 0.85;
+  }
+
+  .range-stat {
+    display: inline-flex;
+    align-items: baseline;
+    gap: 4px;
+  }
+
+  .range-lbl {
+    font: 700 10px/11px var(--bodyFont);
+    opacity: 0.7;
+  }
+
+  .range-val {
+    font: 800 11px/12px var(--monoFont);
+    display: inline-block;
+  }
+
+  .range-divider {
+    display: inline;
+    opacity: 0.35;
+  }
+}
+
+/* --------------------------------------------------------------------------
+   THEME DRAWER & SETTINGS MODAL (Flat Brutalist, Zero Shadows)
+   -------------------------------------------------------------------------- */
+.theme-modal-backdrop {
+  position: fixed;
+  top: 0;
+  left: 0;
+  right: 0;
+  bottom: 0;
+  background-color: rgba(0, 0, 0, 0.7);
+  z-index: 1000;
+  display: none;
+  align-items: center;
+  justify-content: center;
+  padding: 16px;
+}
+.theme-modal-backdrop.open {
+  display: flex;
+}
+
+.theme-modal {
+  background-color: var(--bg1);
+  color: var(--bgInverse);
+  border: 2px solid var(--bgInverse);
+  width: 100%;
+  max-width: 860px;
+  max-height: 85vh;
+  display: flex;
+  flex-direction: column;
+  overflow: hidden;
+}
+
+.theme-modal-header {
+  background-color: var(--bgInverse);
+  color: var(--bg1);
+  padding: 14px 18px;
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  border-bottom: 2px solid var(--accent2);
+}
+
+.theme-modal-title {
+  font: 900 16px/18px var(--titleFont);
+  text-transform: uppercase;
+  letter-spacing: 0.5px;
+  display: flex;
+  align-items: center;
+  gap: 8px;
+}
+.theme-modal-title b {
+  color: var(--accent2);
+}
+
+.theme-modal-close {
+  min-width: 44px;
+  min-height: 44px;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  font-size: 22px;
+  color: var(--bg1);
+  cursor: pointer;
+}
+.theme-modal-close:hover {
+  color: var(--accent1);
+}
+
+.theme-modal-body {
+  padding: 20px;
+  overflow-y: auto;
+  display: flex;
+  flex-direction: column;
+  gap: 22px;
+}
+
+/* Mode Switches */
+.mode-switches-box {
+  background-color: var(--bg2);
+  border: 1px solid var(--bgInverse);
+  padding: 16px;
+}
+
+.mode-switches-box h4 {
+  margin: 0 0 10px 0;
+  font: 900 13px/14px var(--titleFont);
+  text-transform: uppercase;
+}
+
+.mode-buttons-row {
+  display: grid;
+  grid-template-columns: repeat(3, 1fr);
+  gap: 8px;
+}
+
+.mode-btn {
+  min-height: 44px;
+  padding: 8px;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  gap: 6px;
+  font: 800 12px/12px var(--titleFont);
+  text-transform: uppercase;
+  background-color: var(--bg1);
+  color: var(--bgInverse);
+  border: 1px solid var(--bgInverse);
+  cursor: pointer;
+}
+.mode-btn.active {
+  background-color: var(--bgInverse);
+  color: var(--bg1);
+  border-color: var(--accent1);
+}
+
+.addon-toggles-row {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  flex-wrap: wrap;
+  gap: 12px;
+  margin-top: 14px;
+  padding-top: 14px;
+  border-top: 1px dashed var(--bgInverse2);
+}
+
+.contrast-toggle-btn {
+  min-height: 40px;
+  padding: 6px 14px;
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  background-color: var(--bg1);
+  color: var(--bgInverse);
+  border: 1px solid var(--bgInverse);
+  font: 800 11px/11px var(--titleFont);
+  text-transform: uppercase;
+  cursor: pointer;
+}
+.contrast-toggle-btn.active {
+  background-color: var(--accent1);
+  color: var(--bg1);
+}
+
+.font-size-controls {
+  display: flex;
+  align-items: center;
+  gap: 4px;
+}
+.font-size-controls span {
+  font: 800 11px/11px var(--titleFont);
+  text-transform: uppercase;
+  margin-right: 4px;
+}
+
+.font-btn {
+  min-width: 38px;
+  min-height: 38px;
+  background-color: var(--bgInverse);
+  color: var(--bg1);
+  font: 900 15px/15px var(--titleFont);
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  cursor: pointer;
+  border: 1px solid var(--bgInverse);
+}
+.font-btn:hover {
+  background-color: var(--accent2);
+  color: var(--bgInverse);
+}
+
+/* Palette Swatches */
+.palette-group {
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+}
+
+.palette-group-title {
+  font: 900 12px/12px var(--titleFont);
+  text-transform: uppercase;
+  letter-spacing: 0.5px;
+  color: var(--bgInverse);
+  padding-bottom: 4px;
+  border-bottom: 1px solid var(--bgInverse2);
+}
+
+.palette-swatches-grid {
+  display: grid;
+  grid-template-columns: repeat(auto-fill, minmax(125px, 1fr));
+  gap: 8px;
+}
+
+.palette-swatch-item {
+  background-color: var(--bg2);
+  border: 1px solid var(--bgInverse);
+  padding: 6px;
+  display: flex;
+  flex-direction: column;
+  gap: 5px;
+  cursor: pointer;
+  text-align: right;
+  transition: border-color var(--transition);
+}
+
+.palette-swatch-item:hover {
+  border-color: var(--accent1);
+}
+
+.palette-swatch-item.active {
+  border: 2px solid var(--accent1);
+  background-color: var(--bgInverse);
+  color: var(--bg1);
+}
+
+.swatch-color-bars {
+  display: flex;
+  height: 18px;
+  width: 100%;
+  border: 1px solid var(--bgInverse);
+}
+
+.swatch-bar {
+  flex: 1;
+  height: 100%;
+}
+
+.swatch-name {
+  font: 800 10px/12px var(--titleFont);
+  text-transform: uppercase;
+  letter-spacing: 0.5px;
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
