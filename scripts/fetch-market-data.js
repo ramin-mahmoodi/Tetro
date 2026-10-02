@@ -563,6 +563,107 @@ async function fetchTabdealCandles(timeframe) {
   return null;
 }
 
+async function fetchExirPrices() {
+  const json = await safeFetchJson('https://api.exir.io/v2/ticker?symbol=usdt-irt');
+  if (json && (json.last || json.close)) {
+    const price = Math.round(Number(json.last || json.close));
+    const open = Math.round(Number(json.open || price));
+    const high = Math.round(Number(json.high || price));
+    const low = Math.round(Number(json.low || price));
+    const change = open > 0 ? Number((((price - open) / open) * 100).toFixed(2)) : 0;
+    const volUsdt = Number(json.volume || 0);
+    const volToman = Math.round(volUsdt * price);
+
+    return {
+      buyPrice: price,
+      sellPrice: price,
+      change24h: change,
+      high24h: Math.max(high, price),
+      low24h: Math.min(low, price),
+      vol24h: volToman
+    };
+  }
+  return null;
+}
+
+async function fetchExirSparkline() {
+  const now = Math.floor(Date.now() / 1000);
+  const from = now - 86400;
+  const url = `https://api.exir.io/v2/chart?symbol=usdt-irt&resolution=60&from=${from}&to=${now}`;
+  const json = await safeFetchJson(url);
+  if (json && Array.isArray(json) && json.length > 0) {
+    const filtered = json.filter(c => {
+      const t = Math.floor(new Date(c.time).getTime() / 1000);
+      return t >= from && t <= now + 300;
+    });
+    if (filtered.length > 0) {
+      const closes = filtered.map(c => Math.round(Number(c.close)));
+      return closes.slice(-24);
+    }
+  }
+  return null;
+}
+
+async function fetchExirCandles(timeframe) {
+  const tfMap = {
+    '1H': { resolution: '1', sec: 3600 },
+    '24H': { resolution: '15', sec: 86400 },
+    '7D': { resolution: '60', sec: 7 * 86400 },
+    '30D': { resolution: '240', sec: 30 * 86400 },
+    '1Y': { resolution: '1D', sec: 365 * 86400 }
+  };
+  const cfg = tfMap[timeframe];
+  if (!cfg) return null;
+
+  const now = Math.floor(Date.now() / 1000);
+  const from = now - cfg.sec;
+  const url = `https://api.exir.io/v2/chart?symbol=usdt-irt&resolution=${cfg.resolution}&from=${from}&to=${now}`;
+  const json = await safeFetchJson(url);
+
+  if (json && Array.isArray(json) && json.length > 0) {
+    const filtered = json.filter(c => {
+      const t = Math.floor(new Date(c.time).getTime() / 1000);
+      return t >= from && t <= now + 300;
+    });
+
+    const points = [];
+    const step = Math.max(1, Math.floor(filtered.length / 140));
+    for (let i = 0; i < filtered.length; i += step) {
+      const item = filtered[i];
+      const d = new Date(item.time).getTime();
+      points.push({
+        time: d,
+        open: Math.round(Number(item.open)),
+        high: Math.round(Number(item.high)),
+        low: Math.round(Number(item.low)),
+        close: Math.round(Number(item.close)),
+        price: Math.round(Number(item.close)),
+        volume: Math.round(Number(item.volume || 0))
+      });
+    }
+
+    const lastIdx = filtered.length - 1;
+    if (lastIdx >= 0) {
+      const last = filtered[lastIdx];
+      const lastTime = new Date(last.time).getTime();
+      if (points.length > 0 && points[points.length - 1].time !== lastTime) {
+        points.push({
+          time: lastTime,
+          open: Math.round(Number(last.open)),
+          high: Math.round(Number(last.high)),
+          low: Math.round(Number(last.low)),
+          close: Math.round(Number(last.close)),
+          price: Math.round(Number(last.close)),
+          volume: Math.round(Number(last.volume || 0))
+        });
+      }
+    }
+
+    return points;
+  }
+  return null;
+}
+
 async function main() {
   console.log('[START] Fetching live market data...');
 
@@ -577,8 +678,8 @@ async function main() {
   }
 
   const [
-    wallexRates, nobitexRates, abantetherRates, ramzinexRates, tetherlandRates, tabdealRates,
-    wallexSpark, nobitexSpark, abantetherSpark, ramzinexSpark, tetherlandSpark, tabdealSpark
+    wallexRates, nobitexRates, abantetherRates, ramzinexRates, tetherlandRates, tabdealRates, exirRates,
+    wallexSpark, nobitexSpark, abantetherSpark, ramzinexSpark, tetherlandSpark, tabdealSpark, exirSpark
   ] = await Promise.all([
     fetchWallexPrices(),
     fetchNobitexPrices(),
@@ -586,15 +687,17 @@ async function main() {
     fetchRamzinexPrices(),
     fetchTetherLandPrices(),
     fetchTabdealPrices(),
+    fetchExirPrices(),
     fetchWallexSparkline(),
     fetchNobitexSparkline(),
     fetchAbanTetherSparkline(),
     fetchRamzinexSparkline(),
     fetchTetherLandSparkline(),
-    fetchTabdealSparkline()
+    fetchTabdealSparkline(),
+    fetchExirSparkline()
   ]);
 
-  const basePrice = (wallexRates && wallexRates.buyPrice) || (nobitexRates && nobitexRates.buyPrice) || (abantetherRates && abantetherRates.buyPrice) || (ramzinexRates && ramzinexRates.buyPrice) || (tetherlandRates && tetherlandRates.buyPrice) || (tabdealRates && tabdealRates.buyPrice) || 256300;
+  const basePrice = (wallexRates && wallexRates.buyPrice) || (nobitexRates && nobitexRates.buyPrice) || (abantetherRates && abantetherRates.buyPrice) || (ramzinexRates && ramzinexRates.buyPrice) || (tetherlandRates && tetherlandRates.buyPrice) || (tabdealRates && tabdealRates.buyPrice) || (exirRates && exirRates.buyPrice) || 256300;
 
   // Build exchange rates map
   const rates = {};
@@ -630,6 +733,9 @@ async function main() {
     } else if (def.id === 'tabdeal' && tabdealRates) {
       item = { ...item, ...tabdealRates };
       if (tabdealSpark) item.sparkline = tabdealSpark;
+    } else if (def.id === 'exir' && exirRates) {
+      item = { ...item, ...exirRates };
+      if (exirSpark) item.sparkline = exirSpark;
     } else {
       // Offset slightly relative to active basePrice
       const diff = def.baseBuy - 256300;
@@ -675,6 +781,12 @@ async function main() {
     if (tabPts && tabPts.length > 0) {
       candles[`tabdeal_${tf}`] = tabPts;
     }
+
+    console.log(`[CANDLES] Fetching Exir ${tf}...`);
+    const exirPts = await fetchExirCandles(tf);
+    if (exirPts && exirPts.length > 0) {
+      candles[`exir_${tf}`] = exirPts;
+    }
   }
 
   // Compute accurate 24H high & low from actual candles so table matches chart
@@ -710,6 +822,12 @@ async function main() {
     if (totalUsdtVol > 0) {
       rates.tabdeal.vol24h = Math.round(totalUsdtVol * rates.tabdeal.buyPrice);
     }
+  }
+
+  if (candles['exir_24H'] && candles['exir_24H'].length > 0 && rates.exir) {
+    const exirCandles = candles['exir_24H'];
+    rates.exir.high24h = Math.max(...exirCandles.map(p => p.high), rates.exir.high24h, rates.exir.buyPrice);
+    rates.exir.low24h = Math.min(...exirCandles.map(p => p.low), rates.exir.low24h, rates.exir.sellPrice);
   }
 
   // Ensure high24h >= buyPrice and low24h <= sellPrice for all exchanges

@@ -767,6 +767,91 @@ class DataAdapter {
       return emptyTab;
     }
 
+    // 7. When source is Exir:
+    if (sourceId === 'exir') {
+      if (this.historyCache.has(cacheKey) && this.historyCache.get(cacheKey).length > 0) {
+        return this.historyCache.get(cacheKey);
+      }
+
+      if (isLocal) {
+        try {
+          const exirTfMap = {
+            '1H': { resolution: '1', sec: 3600 },
+            '24H': { resolution: '15', sec: 86400 },
+            '7D': { resolution: '60', sec: 7 * 86400 },
+            '30D': { resolution: '240', sec: 30 * 86400 },
+            '1Y': { resolution: '1D', sec: 365 * 86400 }
+          };
+          const ecfg = exirTfMap[timeframe] || { resolution: '60', sec: 86400 };
+          const efrom = now - ecfg.sec;
+          const targetUrl = `https://api.exir.io/v2/chart?symbol=usdt-irt&resolution=${ecfg.resolution}&from=${efrom}&to=${now}`;
+          const proxyUrl = this.getProxyUrl(targetUrl);
+          if (proxyUrl) {
+            const controller = new AbortController();
+            const timeout = setTimeout(() => controller.abort(), 2500);
+            const res = await fetch(proxyUrl, { signal: controller.signal });
+            clearTimeout(timeout);
+            if (res.ok) {
+              const data = await res.json();
+              if (Array.isArray(data) && data.length > 0) {
+                const filtered = data.filter(c => {
+                  const t = Math.floor(new Date(c.time).getTime() / 1000);
+                  return t >= efrom && t <= now + 300;
+                });
+                const points = [];
+                const step = Math.max(1, Math.floor(filtered.length / 140));
+                for (let i = 0; i < filtered.length; i += step) {
+                  const item = filtered[i];
+                  const d = new Date(item.time);
+                  points.push({
+                    time: d,
+                    open: Math.round(Number(item.open)),
+                    high: Math.round(Number(item.high)),
+                    low: Math.round(Number(item.low)),
+                    close: Math.round(Number(item.close)),
+                    price: Math.round(Number(item.close)),
+                    volume: Math.round(Number(item.volume || 0)),
+                    label: this.formatTimeLabel(d, timeframe)
+                  });
+                }
+                const lastIdx = filtered.length - 1;
+                if (lastIdx >= 0) {
+                  const last = filtered[lastIdx];
+                  const lastTime = new Date(last.time);
+                  if (points.length && points[points.length - 1].time.getTime() !== lastTime.getTime()) {
+                    points.push({
+                      time: lastTime,
+                      open: Math.round(Number(last.open)),
+                      high: Math.round(Number(last.high)),
+                      low: Math.round(Number(last.low)),
+                      close: Math.round(Number(last.close)),
+                      price: Math.round(Number(last.close)),
+                      volume: Math.round(Number(last.volume || 0)),
+                      label: this.formatTimeLabel(lastTime, timeframe)
+                    });
+                  }
+                }
+                this.historyCache.set(cacheKey, points);
+                return points;
+              }
+            }
+          }
+        } catch (err) {
+          console.warn('Exir chart fetch error:', err.message);
+        }
+      }
+
+      if (this.historyCache.has(cacheKey) && this.historyCache.get(cacheKey).length > 0) {
+        return this.historyCache.get(cacheKey);
+      }
+
+      const emptyExir = [];
+      emptyExir.noData = true;
+      emptyExir.source = 'exir';
+      emptyExir.message = 'داده‌های تاریخچه اکسیر در دسترس نیست';
+      return emptyExir;
+    }
+
     const emptyDefault = [];
     emptyDefault.noData = true;
     emptyDefault.source = sourceId;
