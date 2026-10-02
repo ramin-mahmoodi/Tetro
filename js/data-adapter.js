@@ -11,7 +11,7 @@ const EXCHANGES_DEF = [
   { id: 'tetherland', name: 'TetherLand', faName: 'تترلند', baseBuy: 256380, baseSell: 256280, vol24h: 2950000, change24h: 0.58 },
   { id: 'tabdeal', name: 'Tabdeal', faName: 'تبدیل', baseBuy: 256360, baseSell: 256210, vol24h: 1420000, change24h: 0.42 },
   { id: 'exir', name: 'Exir', faName: 'اکسیر', baseBuy: 256400, baseSell: 256240, vol24h: 980000, change24h: 0.52 },
-  { id: 'binance', name: 'Global USDT', faName: 'تتر جهانی', baseBuy: 256370, baseSell: 256360, vol24h: 18450000, change24h: 0.02, isGlobal: true }
+  { id: 'bitpin', name: 'Bitpin', faName: 'بیت‌پین', baseBuy: 256350, baseSell: 256250, vol24h: 2400000, change24h: 0.50 }
 ];
 
 function generateInitialSparkline(base, count = 22) {
@@ -852,6 +852,83 @@ class DataAdapter {
       return emptyExir;
     }
 
+    // 8. When source is Bitpin:
+    if (sourceId === 'bitpin') {
+      if (this.historyCache.has(cacheKey) && this.historyCache.get(cacheKey).length > 0) {
+        return this.historyCache.get(cacheKey);
+      }
+
+      try {
+        const bpTfMap = {
+          '1H': { resolution: '1', sec: 3600 },
+          '24H': { resolution: '15', sec: 86400 },
+          '7D': { resolution: '60', sec: 7 * 86400 },
+          '30D': { resolution: '240', sec: 30 * 86400 },
+          '1Y': { resolution: '1D', sec: 365 * 86400 }
+        };
+        const bcfg = bpTfMap[timeframe] || { resolution: '15', sec: 86400 };
+        const bfrom = now - bcfg.sec;
+        const targetUrl = `https://api.bitpin.ir/v1/mkt/tv/get_bars/?symbol=USDT_IRT&res=${bcfg.resolution}&from=${bfrom}&to=${now}`;
+        const fetchUrl = isLocal ? (this.getProxyUrl(targetUrl) || targetUrl) : targetUrl;
+        const controller = new AbortController();
+        const timeout = setTimeout(() => controller.abort(), 2500);
+        const res = await fetch(fetchUrl, { signal: controller.signal });
+        clearTimeout(timeout);
+        if (res.ok) {
+          const raw = await res.json();
+          if (Array.isArray(raw) && raw.length > 0) {
+            const points = [];
+            const step = Math.max(1, Math.floor(raw.length / 140));
+            for (let i = 0; i < raw.length; i += step) {
+              const item = raw[i];
+              const d = new Date(typeof item.time === 'number' && item.time > 1e11 ? item.time : item.time * 1000);
+              points.push({
+                time: d,
+                open: Math.round(Number(item.open)),
+                high: Math.round(Number(item.high)),
+                low: Math.round(Number(item.low)),
+                close: Math.round(Number(item.close)),
+                price: Math.round(Number(item.close)),
+                volume: Math.round(Number(item.volume || 0)),
+                label: this.formatTimeLabel(d, timeframe)
+              });
+            }
+            const lastIdx = raw.length - 1;
+            if (lastIdx >= 0) {
+              const last = raw[lastIdx];
+              const lastTime = new Date(typeof last.time === 'number' && last.time > 1e11 ? last.time : last.time * 1000);
+              if (points.length && points[points.length - 1].time.getTime() !== lastTime.getTime()) {
+                points.push({
+                  time: lastTime,
+                  open: Math.round(Number(last.open)),
+                  high: Math.round(Number(last.high)),
+                  low: Math.round(Number(last.low)),
+                  close: Math.round(Number(last.close)),
+                  price: Math.round(Number(last.close)),
+                  volume: Math.round(Number(last.volume || 0)),
+                  label: this.formatTimeLabel(lastTime, timeframe)
+                });
+              }
+            }
+            this.historyCache.set(cacheKey, points);
+            return points;
+          }
+        }
+      } catch (err) {
+        console.warn('Bitpin chart fetch error:', err.message);
+      }
+
+      if (this.historyCache.has(cacheKey) && this.historyCache.get(cacheKey).length > 0) {
+        return this.historyCache.get(cacheKey);
+      }
+
+      const emptyBitpin = [];
+      emptyBitpin.noData = true;
+      emptyBitpin.source = 'bitpin';
+      emptyBitpin.message = 'داده‌های تاریخچه بیت‌پین در دسترس نیست';
+      return emptyBitpin;
+    }
+
     const emptyDefault = [];
     emptyDefault.noData = true;
     emptyDefault.source = sourceId;
@@ -937,17 +1014,21 @@ class DataAdapter {
     this.fetchWallexSparkline();
     this.fetchNobitexPrices();
     this.fetchNobitexSparkline();
+    this.fetchBitpinPrices();
+    this.fetchBitpinSparkline();
 
     // Poll live prices every 6 seconds
     this.livePollTimer = setInterval(() => {
       this.fetchWallexPrices();
       this.fetchNobitexPrices();
+      this.fetchBitpinPrices();
     }, 6000);
 
     // Refresh sparklines every 60 seconds (never clear candle historyCache)
     setInterval(() => {
       this.fetchWallexSparkline();
       this.fetchNobitexSparkline();
+      this.fetchBitpinSparkline();
     }, 60000);
   }
 
@@ -1101,13 +1182,86 @@ class DataAdapter {
     }
   }
 
+  // Fetch live market data for Bitpin USDT_IRT
+  async fetchBitpinPrices() {
+    try {
+      const targetUrl = 'https://api.bitpin.ir/v4/mkt/prices/';
+      const isLocal = typeof window !== 'undefined' && (window.location.hostname === 'localhost' || window.location.hostname === '127.0.0.1');
+      const fetchUrl = isLocal ? (this.getProxyUrl(targetUrl) || targetUrl) : targetUrl;
+      const res = await fetch(fetchUrl);
+      if (!res.ok) return;
+      const json = await res.json();
+      if (!json || !json.results || !json.results.USDT_IRT) return;
+      const bp = json.results.USDT_IRT;
+      const price = Math.round(Number(bp.price));
+      const high = Math.round(Number(bp.order_book_info?.max || price));
+      const low = Math.round(Number(bp.order_book_info?.min || price));
+      const ch24h = Number(bp.price_info?.change || 0);
+      const volRial = Number(bp.order_book_info?.value || 0);
+      const volToman = Math.round(volRial / 10);
+
+      const bpRate = this.rates.get('bitpin');
+      if (bpRate) {
+        const dir = price > bpRate.buyPrice ? 'up' : (price < bpRate.buyPrice ? 'down' : 'none');
+        bpRate.buyPrice = price;
+        bpRate.sellPrice = price;
+        bpRate.change24h = ch24h;
+        bpRate.high24h = high;
+        bpRate.low24h = low;
+        bpRate.vol24h = volToman;
+        bpRate.lastUpdate = new Date();
+        bpRate.lastDirection = dir;
+
+        this.notify({
+          type: 'tick',
+          exchangeId: 'bitpin',
+          direction: dir,
+          rate: bpRate,
+          stats: this.getAggregateStats()
+        });
+      }
+    } catch (err) {
+      // Ignored
+    }
+  }
+
+  // Fetch 24h mini sparkline for Bitpin
+  async fetchBitpinSparkline() {
+    try {
+      const now = Math.floor(Date.now() / 1000);
+      const from = now - 86400;
+      const targetUrl = `https://api.bitpin.ir/v1/mkt/tv/get_bars/?symbol=USDT_IRT&res=60&from=${from}&to=${now}`;
+      const isLocal = typeof window !== 'undefined' && (window.location.hostname === 'localhost' || window.location.hostname === '127.0.0.1');
+      const fetchUrl = isLocal ? (this.getProxyUrl(targetUrl) || targetUrl) : targetUrl;
+      const res = await fetch(fetchUrl);
+      if (!res.ok) return;
+      const json = await res.json();
+      if (Array.isArray(json) && json.length > 0) {
+        const prices = json.map(p => Math.round(Number(p.close)));
+        const bpRate = this.rates.get('bitpin');
+        if (bpRate) {
+          bpRate.sparkline = prices;
+          this.notify({
+            type: 'tick',
+            exchangeId: 'bitpin',
+            direction: 'none',
+            rate: bpRate,
+            stats: this.getAggregateStats()
+          });
+        }
+      }
+    } catch (err) {
+      // Ignored
+    }
+  }
+
   // Live simulation for exchanges (keeps the dashboard dynamic)
   startLiveSimulation() {
     if (this.tickTimer) clearInterval(this.tickTimer);
 
     this.tickTimer = setInterval(() => {
-      // Pick an exchange (skipping active streaming ones: Wallex & Nobitex)
-      const nonStream = EXCHANGES_DEF.filter(e => e.id !== 'wallex' && e.id !== 'nobitex');
+      // Pick an exchange (skipping active streaming ones: Wallex, Nobitex & Bitpin)
+      const nonStream = EXCHANGES_DEF.filter(e => e.id !== 'wallex' && e.id !== 'nobitex' && e.id !== 'bitpin');
       const randomEx = nonStream[Math.floor(Math.random() * nonStream.length)];
       const current = this.rates.get(randomEx.id);
       if (!current) return;

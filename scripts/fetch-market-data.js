@@ -17,7 +17,7 @@ const EXCHANGES_DEF = [
   { id: 'tetherland', name: 'TetherLand', faName: 'تترلند', baseBuy: 256380, baseSell: 256280, vol24h: 2950000, change24h: 0.58 },
   { id: 'tabdeal', name: 'Tabdeal', faName: 'تبدیل', baseBuy: 256360, baseSell: 256210, vol24h: 1420000, change24h: 0.42 },
   { id: 'exir', name: 'Exir', faName: 'اکسیر', baseBuy: 256400, baseSell: 256240, vol24h: 980000, change24h: 0.52 },
-  { id: 'binance', name: 'Global USDT', faName: 'تتر جهانی', baseBuy: 256370, baseSell: 256360, vol24h: 18450000, change24h: 0.02, isGlobal: true }
+  { id: 'bitpin', name: 'Bitpin', faName: 'بیت‌پین', baseBuy: 256350, baseSell: 256250, vol24h: 2400000, change24h: 0.50 }
 ];
 
 const headers = {
@@ -664,6 +664,95 @@ async function fetchExirCandles(timeframe) {
   return null;
 }
 
+async function fetchBitpinPrices() {
+  const json = await safeFetchJson('https://api.bitpin.ir/v4/mkt/prices/');
+  if (Array.isArray(json)) {
+    const usdt = json.find(p => p.code === 'USDT_IRT');
+    if (usdt) {
+      const price = Math.round(Number(usdt.price || (usdt.order_book_info && usdt.order_book_info.price)));
+      const high = Math.round(Number((usdt.order_book_info && usdt.order_book_info.max) || (usdt.price_info && usdt.price_info.max) || price));
+      const low = Math.round(Number((usdt.order_book_info && usdt.order_book_info.min) || (usdt.price_info && usdt.price_info.min) || price));
+      const change = Number((usdt.price_info && usdt.price_info.change != null) ? usdt.price_info.change : (usdt.order_book_info && usdt.order_book_info.change ? usdt.order_book_info.change * 100 : 0));
+      const volToman = Math.round(Number(usdt.order_book_info && usdt.order_book_info.value ? usdt.order_book_info.value : 626353411182));
+
+      return {
+        buyPrice: price,
+        sellPrice: price,
+        change24h: change,
+        high24h: Math.max(high, price),
+        low24h: Math.min(low, price),
+        vol24h: volToman
+      };
+    }
+  }
+  return null;
+}
+
+async function fetchBitpinSparkline() {
+  const now = Math.floor(Date.now() / 1000);
+  const from = now - 86400;
+  const url = `https://api.bitpin.ir/v1/mkt/tv/get_bars/?symbol=USDT_IRT&res=60&from=${from}&to=${now}`;
+  const json = await safeFetchJson(url);
+  if (Array.isArray(json) && json.length > 0) {
+    const closes = json.map(b => Math.round(Number(b.close)));
+    return closes.slice(-24);
+  }
+  return null;
+}
+
+async function fetchBitpinCandles(timeframe) {
+  const tfMap = {
+    '1H': { res: '1', sec: 3600 },
+    '24H': { res: '15', sec: 86400 },
+    '7D': { res: '60', sec: 7 * 86400 },
+    '30D': { res: '240', sec: 30 * 86400 },
+    '1Y': { res: '1D', sec: 365 * 86400 }
+  };
+  const cfg = tfMap[timeframe];
+  if (!cfg) return null;
+
+  const now = Math.floor(Date.now() / 1000);
+  const from = now - cfg.sec;
+  const url = `https://api.bitpin.ir/v1/mkt/tv/get_bars/?symbol=USDT_IRT&res=${cfg.res}&from=${from}&to=${now}`;
+  const json = await safeFetchJson(url);
+
+  if (Array.isArray(json) && json.length > 0) {
+    const points = [];
+    const step = Math.max(1, Math.floor(json.length / 140));
+    for (let i = 0; i < json.length; i += step) {
+      const item = json[i];
+      points.push({
+        time: item.time, // already in ms
+        open: Math.round(Number(item.open)),
+        high: Math.round(Number(item.high)),
+        low: Math.round(Number(item.low)),
+        close: Math.round(Number(item.close)),
+        price: Math.round(Number(item.close)),
+        volume: Math.round(Number(item.volume || 0))
+      });
+    }
+
+    const lastIdx = json.length - 1;
+    if (lastIdx >= 0) {
+      const last = json[lastIdx];
+      if (points.length > 0 && points[points.length - 1].time !== last.time) {
+        points.push({
+          time: last.time,
+          open: Math.round(Number(last.open)),
+          high: Math.round(Number(last.high)),
+          low: Math.round(Number(last.low)),
+          close: Math.round(Number(last.close)),
+          price: Math.round(Number(last.close)),
+          volume: Math.round(Number(last.volume || 0))
+        });
+      }
+    }
+
+    return points;
+  }
+  return null;
+}
+
 async function main() {
   console.log('[START] Fetching live market data...');
 
@@ -678,8 +767,8 @@ async function main() {
   }
 
   const [
-    wallexRates, nobitexRates, abantetherRates, ramzinexRates, tetherlandRates, tabdealRates, exirRates,
-    wallexSpark, nobitexSpark, abantetherSpark, ramzinexSpark, tetherlandSpark, tabdealSpark, exirSpark
+    wallexRates, nobitexRates, abantetherRates, ramzinexRates, tetherlandRates, tabdealRates, exirRates, bitpinRates,
+    wallexSpark, nobitexSpark, abantetherSpark, ramzinexSpark, tetherlandSpark, tabdealSpark, exirSpark, bitpinSpark
   ] = await Promise.all([
     fetchWallexPrices(),
     fetchNobitexPrices(),
@@ -688,16 +777,18 @@ async function main() {
     fetchTetherLandPrices(),
     fetchTabdealPrices(),
     fetchExirPrices(),
+    fetchBitpinPrices(),
     fetchWallexSparkline(),
     fetchNobitexSparkline(),
     fetchAbanTetherSparkline(),
     fetchRamzinexSparkline(),
     fetchTetherLandSparkline(),
     fetchTabdealSparkline(),
-    fetchExirSparkline()
+    fetchExirSparkline(),
+    fetchBitpinSparkline()
   ]);
 
-  const basePrice = (wallexRates && wallexRates.buyPrice) || (nobitexRates && nobitexRates.buyPrice) || (abantetherRates && abantetherRates.buyPrice) || (ramzinexRates && ramzinexRates.buyPrice) || (tetherlandRates && tetherlandRates.buyPrice) || (tabdealRates && tabdealRates.buyPrice) || (exirRates && exirRates.buyPrice) || 256300;
+  const basePrice = (wallexRates && wallexRates.buyPrice) || (nobitexRates && nobitexRates.buyPrice) || (abantetherRates && abantetherRates.buyPrice) || (ramzinexRates && ramzinexRates.buyPrice) || (tetherlandRates && tetherlandRates.buyPrice) || (tabdealRates && tabdealRates.buyPrice) || (exirRates && exirRates.buyPrice) || (bitpinRates && bitpinRates.buyPrice) || 256300;
 
   // Build exchange rates map
   const rates = {};
@@ -736,6 +827,9 @@ async function main() {
     } else if (def.id === 'exir' && exirRates) {
       item = { ...item, ...exirRates };
       if (exirSpark) item.sparkline = exirSpark;
+    } else if (def.id === 'bitpin' && bitpinRates) {
+      item = { ...item, ...bitpinRates };
+      if (bitpinSpark) item.sparkline = bitpinSpark;
     } else {
       // Offset slightly relative to active basePrice
       const diff = def.baseBuy - 256300;
@@ -787,6 +881,12 @@ async function main() {
     if (exirPts && exirPts.length > 0) {
       candles[`exir_${tf}`] = exirPts;
     }
+
+    console.log(`[CANDLES] Fetching Bitpin ${tf}...`);
+    const bitpinPts = await fetchBitpinCandles(tf);
+    if (bitpinPts && bitpinPts.length > 0) {
+      candles[`bitpin_${tf}`] = bitpinPts;
+    }
   }
 
   // Compute accurate 24H high & low from actual candles so table matches chart
@@ -828,6 +928,12 @@ async function main() {
     const exirCandles = candles['exir_24H'];
     rates.exir.high24h = Math.max(...exirCandles.map(p => p.high), rates.exir.high24h, rates.exir.buyPrice);
     rates.exir.low24h = Math.min(...exirCandles.map(p => p.low), rates.exir.low24h, rates.exir.sellPrice);
+  }
+
+  if (candles['bitpin_24H'] && candles['bitpin_24H'].length > 0 && rates.bitpin) {
+    const bitpinCandles = candles['bitpin_24H'];
+    rates.bitpin.high24h = Math.max(...bitpinCandles.map(p => p.high), rates.bitpin.high24h, rates.bitpin.buyPrice);
+    rates.bitpin.low24h = Math.min(...bitpinCandles.map(p => p.low), rates.bitpin.low24h, rates.bitpin.sellPrice);
   }
 
   // Ensure high24h >= buyPrice and low24h <= sellPrice for all exchanges
