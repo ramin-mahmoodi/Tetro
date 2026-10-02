@@ -7,9 +7,7 @@
   "display": "standalone",
   "background_color": "#000000",
   "theme_color": "#000000",
-  "orientation": "portrait-primary",
-  "dir": "rtl",
-  "lang": "fa",
+  "orientation": "portrait",
   "icons": [
     {
       "src": "assets/icons/icon-192.png",

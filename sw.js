@@ -3,7 +3,7 @@
    Caches static assets for offline capability and instant loading
    ========================================================================== */
 
-const CACHE_NAME = 'tetro-pwa-v7';
+const CACHE_NAME = 'tetro-pwa-v8';
 const ASSETS_TO_CACHE = [
   './',
   './index.html',
