@@ -123,13 +123,18 @@ class DataAdapter {
         Object.keys(data.candles).forEach(tf => {
           const rawPoints = data.candles[tf];
           if (Array.isArray(rawPoints) && rawPoints.length > 0) {
+            const cleanTf = tf.replace('abantether_', '');
             const formatted = rawPoints.map(p => ({
               ...p,
               time: new Date(p.time),
-              label: this.formatTimeLabel(new Date(p.time), tf)
+              label: this.formatTimeLabel(new Date(p.time), cleanTf)
             }));
-            this.historyCache.set(`wallex_${tf}`, formatted);
-            this.historyCache.set(`aggregate_${tf}`, formatted);
+            if (tf.startsWith('abantether_')) {
+              this.historyCache.set(tf, formatted);
+            } else {
+              this.historyCache.set(`wallex_${tf}`, formatted);
+              this.historyCache.set(`aggregate_${tf}`, formatted);
+            }
           }
         });
       }
@@ -400,6 +405,83 @@ class DataAdapter {
       emptyResult.source = 'nobitex';
       emptyResult.message = 'داده‌های تاریخچه نوبیتکس در دسترس نیست (سمت سرور نوبیتکس در حال حاضر ارسال نمی‌شود)';
       return emptyResult;
+    }
+
+    // 3. When source is AbanTether:
+    if (sourceId === 'abantether') {
+      if (this.historyCache.has(cacheKey) && this.historyCache.get(cacheKey).length > 0) {
+        return this.historyCache.get(cacheKey);
+      }
+
+      if (isLocal) {
+        try {
+          const abanTfMap = {
+            '1H': { resolution: '1', sec: 3600, countback: 60 },
+            '24H': { resolution: '15', sec: 86400, countback: 96 },
+            '7D': { resolution: '60', sec: 7 * 86400, countback: 168 },
+            '30D': { resolution: '240', sec: 30 * 86400, countback: 180 },
+            '1Y': { resolution: '1D', sec: 365 * 86400, countback: 365 }
+          };
+          const acfg = abanTfMap[timeframe] || { resolution: '60', sec: 86400, countback: 96 };
+          const afrom = now - acfg.sec;
+          const targetUrl = `https://api.abantether.com/otc_reporting/tradingview/history?symbol=USDT%2FIRT&resolution=${acfg.resolution}&from=${afrom}&to=${now}&countback=${acfg.countback}`;
+          const proxyUrl = this.getProxyUrl(targetUrl);
+          if (proxyUrl) {
+            const controller = new AbortController();
+            const timeout = setTimeout(() => controller.abort(), 2500);
+            const res = await fetch(proxyUrl, { signal: controller.signal });
+            clearTimeout(timeout);
+            if (res.ok) {
+              const json = await res.json();
+              if (json.s === 'ok' && Array.isArray(json.t) && Array.isArray(json.c) && json.t.length > 0) {
+                const points = [];
+                const step = Math.max(1, Math.floor(json.t.length / 140));
+                for (let i = 0; i < json.t.length; i += step) {
+                  const d = new Date(json.t[i] * 1000);
+                  points.push({
+                    time: d,
+                    open: Math.round(Number(json.o ? json.o[i] : json.c[i])),
+                    high: Math.round(Number(json.h ? json.h[i] : json.c[i])),
+                    low: Math.round(Number(json.l ? json.l[i] : json.c[i])),
+                    close: Math.round(Number(json.c[i])),
+                    price: Math.round(Number(json.c[i])),
+                    volume: Math.round(Number(json.v ? json.v[i] : 0)),
+                    label: this.formatTimeLabel(d, timeframe)
+                  });
+                }
+                const lastIdx = json.t.length - 1;
+                const lastTime = new Date(json.t[lastIdx] * 1000);
+                if (points.length && points[points.length - 1].time.getTime() !== lastTime.getTime()) {
+                  points.push({
+                    time: lastTime,
+                    open: Math.round(Number(json.o ? json.o[lastIdx] : json.c[lastIdx])),
+                    high: Math.round(Number(json.h ? json.h[lastIdx] : json.c[lastIdx])),
+                    low: Math.round(Number(json.l ? json.l[lastIdx] : json.c[lastIdx])),
+                    close: Math.round(Number(json.c[lastIdx])),
+                    price: Math.round(Number(json.c[lastIdx])),
+                    volume: Math.round(Number(json.v ? json.v[lastIdx] : 0)),
+                    label: this.formatTimeLabel(lastTime, timeframe)
+                  });
+                }
+                this.historyCache.set(cacheKey, points);
+                return points;
+              }
+            }
+          }
+        } catch (err) {
+          console.warn('AbanTether UDF fetch error:', err.message);
+        }
+      }
+
+      if (this.historyCache.has(cacheKey) && this.historyCache.get(cacheKey).length > 0) {
+        return this.historyCache.get(cacheKey);
+      }
+
+      const emptyAban = [];
+      emptyAban.noData = true;
+      emptyAban.source = 'abantether';
+      emptyAban.message = 'داده‌های تاریخچه آبان‌تتر در دسترس نیست';
+      return emptyAban;
     }
 
     const emptyDefault = [];

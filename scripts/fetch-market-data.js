@@ -103,6 +103,24 @@ async function fetchNobitexPrices() {
   return null;
 }
 
+async function fetchAbanTetherPrices() {
+  const json = await safeFetchJson('https://api.abantether.com/manager/coins/data');
+  if (json && Array.isArray(json.data)) {
+    const usdt = json.data.find(c => c.symbol === 'USDT');
+    if (usdt) {
+      return {
+        buyPrice: Math.round(Number(usdt.price_buy)),
+        sellPrice: Math.round(Number(usdt.price_sell)),
+        change24h: Number(usdt.percent_change_24h || 0),
+        high24h: Math.round(Number(usdt.high_24h || 0)),
+        low24h: Math.round(Number(usdt.low_24h || 0)),
+        vol24h: Math.round(Number(usdt.volume24h || 0))
+      };
+    }
+  }
+  return null;
+}
+
 async function fetchWallexCandles(timeframe) {
   const tfMap = {
     '1H': { resolution: '1', sec: 3600 },
@@ -174,6 +192,65 @@ async function fetchNobitexSparkline() {
   return null;
 }
 
+async function fetchAbanTetherSparkline() {
+  const now = Math.floor(Date.now() / 1000);
+  const from = now - 86400;
+  const url = `https://api.abantether.com/otc_reporting/tradingview/history?symbol=USDT%2FIRT&resolution=60&from=${from}&to=${now}&countback=24`;
+  const json = await safeFetchJson(url);
+  if (json && json.s === 'ok' && Array.isArray(json.c) && json.c.length > 0) {
+    return json.c.map(p => Math.round(Number(p)));
+  }
+  return null;
+}
+
+async function fetchAbanTetherCandles(timeframe) {
+  const tfMap = {
+    '1H': { resolution: '1', sec: 3600, countback: 60 },
+    '24H': { resolution: '15', sec: 86400, countback: 96 },
+    '7D': { resolution: '60', sec: 7 * 86400, countback: 168 },
+    '30D': { resolution: '240', sec: 30 * 86400, countback: 180 },
+    '1Y': { resolution: '1D', sec: 365 * 86400, countback: 365 }
+  };
+  const cfg = tfMap[timeframe];
+  if (!cfg) return null;
+
+  const now = Math.floor(Date.now() / 1000);
+  const from = now - cfg.sec;
+  const url = `https://api.abantether.com/otc_reporting/tradingview/history?symbol=USDT%2FIRT&resolution=${cfg.resolution}&from=${from}&to=${now}&countback=${cfg.countback}`;
+  const json = await safeFetchJson(url);
+
+  if (json && json.s === 'ok' && Array.isArray(json.t) && Array.isArray(json.c) && json.t.length > 0) {
+    const points = [];
+    const step = Math.max(1, Math.floor(json.t.length / 140));
+    for (let i = 0; i < json.t.length; i += step) {
+      points.push({
+        time: json.t[i] * 1000,
+        open: Math.round(Number(json.o ? json.o[i] : json.c[i])),
+        high: Math.round(Number(json.h ? json.h[i] : json.c[i])),
+        low: Math.round(Number(json.l ? json.l[i] : json.c[i])),
+        close: Math.round(Number(json.c[i])),
+        price: Math.round(Number(json.c[i])),
+        volume: Math.round(Number(json.v ? json.v[i] : 0))
+      });
+    }
+    const lastIdx = json.t.length - 1;
+    const lastTime = json.t[lastIdx] * 1000;
+    if (points.length && points[points.length - 1].time !== lastTime) {
+      points.push({
+        time: lastTime,
+        open: Math.round(Number(json.o ? json.o[lastIdx] : json.c[lastIdx])),
+        high: Math.round(Number(json.h ? json.h[lastIdx] : json.c[lastIdx])),
+        low: Math.round(Number(json.l ? json.l[lastIdx] : json.c[lastIdx])),
+        close: Math.round(Number(json.c[lastIdx])),
+        price: Math.round(Number(json.c[lastIdx])),
+        volume: Math.round(Number(json.v ? json.v[lastIdx] : 0))
+      });
+    }
+    return points;
+  }
+  return null;
+}
+
 async function main() {
   console.log('[START] Fetching live market data...');
 
@@ -187,14 +264,16 @@ async function main() {
     }
   }
 
-  const [wallexRates, nobitexRates, wallexSpark, nobitexSpark] = await Promise.all([
+  const [wallexRates, nobitexRates, abantetherRates, wallexSpark, nobitexSpark, abantetherSpark] = await Promise.all([
     fetchWallexPrices(),
     fetchNobitexPrices(),
+    fetchAbanTetherPrices(),
     fetchWallexSparkline(),
-    fetchNobitexSparkline()
+    fetchNobitexSparkline(),
+    fetchAbanTetherSparkline()
   ]);
 
-  const basePrice = (wallexRates && wallexRates.buyPrice) || (nobitexRates && nobitexRates.buyPrice) || 256300;
+  const basePrice = (wallexRates && wallexRates.buyPrice) || (nobitexRates && nobitexRates.buyPrice) || (abantetherRates && abantetherRates.buyPrice) || 256300;
 
   // Build exchange rates map
   const rates = {};
@@ -218,6 +297,9 @@ async function main() {
     } else if (def.id === 'nobitex' && nobitexRates) {
       item = { ...item, ...nobitexRates };
       if (nobitexSpark) item.sparkline = nobitexSpark;
+    } else if (def.id === 'abantether' && abantetherRates) {
+      item = { ...item, ...abantetherRates };
+      if (abantetherSpark) item.sparkline = abantetherSpark;
     } else {
       // Offset slightly relative to active basePrice
       const diff = def.baseBuy - 256300;
@@ -238,6 +320,12 @@ async function main() {
     const pts = await fetchWallexCandles(tf);
     if (pts && pts.length > 0) {
       candles[tf] = pts;
+    }
+
+    console.log(`[CANDLES] Fetching AbanTether ${tf}...`);
+    const abanPts = await fetchAbanTetherCandles(tf);
+    if (abanPts && abanPts.length > 0) {
+      candles[`abantether_${tf}`] = abanPts;
     }
   }
 
