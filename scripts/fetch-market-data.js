@@ -48,7 +48,27 @@ async function safeFetchJson(url, timeoutMs = 8000) {
 }
 
 async function fetchWallexPrices() {
-  // 1. Try public coin-prices-list
+  // 1. Primary: Real-time Spot Markets API (matches orderbook & tradingview UDF candles exactly)
+  const fData = await safeFetchJson('https://api.wallex.ir/v1/markets');
+  if (fData && fData.result && fData.result.symbols && fData.result.symbols.USDTTMN) {
+    const usdt = fData.result.symbols.USDTTMN;
+    if (usdt.stats) {
+      const buyPrice = Math.round(Number(usdt.stats.askPrice || usdt.stats.lastPrice));
+      const sellPrice = Math.round(Number(usdt.stats.bidPrice || usdt.stats.lastPrice));
+      const high = Math.round(Number(usdt.stats['24h_highPrice'] || buyPrice));
+      const low = Math.round(Number(usdt.stats['24h_lowPrice'] || sellPrice));
+      return {
+        buyPrice: buyPrice,
+        sellPrice: sellPrice,
+        change24h: Number(usdt.stats['24h_ch'] || 0),
+        high24h: Math.max(high, buyPrice),
+        low24h: Math.min(low, sellPrice),
+        vol24h: Math.round(Number(usdt.stats['24h_tmnVolume'] || usdt.stats['24h_volume'] || 0))
+      };
+    }
+  }
+
+  // 2. Fallback: coin-prices-list
   const data = await safeFetchJson('https://wallex.ir/api/coin-prices-list?v=1&keys=USDT');
   if (data && data.result && data.result.markets && data.result.markets[0]) {
     const m = data.result.markets[0];
@@ -62,22 +82,6 @@ async function fetchWallexPrices() {
         high24h: Math.round(Number(tmn.dailyHighPrice || price * 1.005)),
         low24h: Math.round(Number(tmn.dailyLowPrice || price * 0.995)),
         vol24h: 2150000
-      };
-    }
-  }
-
-  // 2. Fallback to api.wallex.ir/v1/markets
-  const fData = await safeFetchJson('https://api.wallex.ir/v1/markets');
-  if (fData && fData.result && fData.result.symbols && fData.result.symbols.USDTTMN) {
-    const usdt = fData.result.symbols.USDTTMN;
-    if (usdt.stats) {
-      return {
-        buyPrice: Math.round(Number(usdt.stats.bidPrice || usdt.stats.lastPrice)),
-        sellPrice: Math.round(Number(usdt.stats.askPrice || usdt.stats.lastPrice)),
-        change24h: Number(usdt.stats['24h_ch'] || 0),
-        high24h: Math.round(Number(usdt.stats['24h_highPrice'] || 0)),
-        low24h: Math.round(Number(usdt.stats['24h_lowPrice'] || 0)),
-        vol24h: Math.round(Number(usdt.stats['24h_volume'] || 0))
       };
     }
   }
