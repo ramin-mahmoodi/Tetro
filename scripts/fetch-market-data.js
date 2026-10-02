@@ -336,6 +336,148 @@ async function fetchRamzinexCandles(timeframe) {
   return null;
 }
 
+function parseTetherlandTime(dtStr) {
+  const s = dtStr.trim();
+  if (s.includes(' ')) {
+    const parts = s.split(' ');
+    let tm = parts[1];
+    if (tm.length === 2) tm = tm + ':00';
+    return new Date(`${parts[0]}T${tm}:00+03:30`).getTime();
+  } else {
+    return new Date(`${s}T00:00:00+03:30`).getTime();
+  }
+}
+
+async function fetchTetherLandPrices() {
+  const [currJson, volJson] = await Promise.all([
+    safeFetchJson('https://service.tetherland.com/api/v4/currencies'),
+    safeFetchJson('https://market.tetherland.com/prices')
+  ]);
+
+  if (currJson && (currJson.buy_price || currJson.price)) {
+    const buyPrice = Math.round(Number(currJson.buy_price || currJson.price));
+    const sellPrice = Math.round(Number(currJson.sell_price || currJson.price));
+    const high = Math.round(Number(currJson.last24hMax || buyPrice));
+    const low = Math.round(Number(currJson.last24hMin || sellPrice));
+    const change = Number(currJson.diff24d || 0);
+
+    let vol = 2950000;
+    if (volJson && volJson.data && volJson.data.markets && volJson.data.markets.USDTTMN && volJson.data.markets.USDTTMN['24h_volume']) {
+      vol = Math.round(Number(volJson.data.markets.USDTTMN['24h_volume']) / 10);
+    }
+
+    return {
+      buyPrice,
+      sellPrice,
+      change24h: change,
+      high24h: Math.max(high, buyPrice),
+      low24h: Math.min(low, sellPrice),
+      vol24h: vol
+    };
+  }
+  return null;
+}
+
+async function fetchTetherLandSparkline() {
+  const json = await safeFetchJson('https://service.tetherland.com/api/v5/chart?rate=1&mode=h');
+  if (json && json.data && Array.isArray(json.data.prices) && json.data.prices.length > 0) {
+    const reversed = [...json.data.prices].reverse();
+    return reversed.map(p => Math.round(Number(p.price)));
+  }
+  return null;
+}
+
+async function fetchTetherLandCandles(timeframe) {
+  let url = '';
+  if (timeframe === '1H' || timeframe === '24H') {
+    url = 'https://service.tetherland.com/api/v5/chart?rate=1&mode=m';
+  } else if (timeframe === '7D') {
+    url = 'https://service.tetherland.com/api/v5/chart?rate=7&mode=h';
+  } else if (timeframe === '30D') {
+    url = 'https://service.tetherland.com/api/v5/chart?rate=30&mode=h';
+  } else if (timeframe === '1Y') {
+    url = 'https://service.tetherland.com/api/v5/chart?rate=365&mode=d';
+  } else {
+    return null;
+  }
+
+  const json = await safeFetchJson(url);
+  if (!json || !json.data || !Array.isArray(json.data.prices) || json.data.prices.length === 0) {
+    return null;
+  }
+
+  const raw = [...json.data.prices].reverse();
+  const parsed = [];
+  let lastTime = 0;
+
+  for (const item of raw) {
+    const t = parseTetherlandTime(item.datetime);
+    if (t > lastTime) {
+      parsed.push({ time: t, price: Math.round(Number(item.price)) });
+      lastTime = t;
+    }
+  }
+
+  if (parsed.length === 0) return null;
+
+  if (timeframe === '1H') {
+    const now = Date.now();
+    const oneHourAgo = now - 3600 * 1000;
+    let curPrice = parsed[0].price;
+    for (const p of parsed) {
+      if (p.time <= oneHourAgo) curPrice = p.price;
+    }
+    const minutePoints = [];
+    for (let m = 60; m >= 0; m--) {
+      const t = Math.floor((now - m * 60000) / 60000) * 60000;
+      const applicable = parsed.filter(p => p.time <= t);
+      const pVal = applicable.length > 0 ? applicable[applicable.length - 1].price : curPrice;
+      minutePoints.push({
+        time: t,
+        open: pVal,
+        high: pVal,
+        low: pVal,
+        close: pVal,
+        price: pVal,
+        volume: 0
+      });
+    }
+    return minutePoints;
+  }
+
+  const points = [];
+  const step = Math.max(1, Math.floor(parsed.length / 140));
+  for (let i = 0; i < parsed.length; i += step) {
+    const item = parsed[i];
+    const prevItem = i > 0 ? parsed[i - 1] : item;
+    points.push({
+      time: item.time,
+      open: prevItem.price,
+      high: Math.max(prevItem.price, item.price),
+      low: Math.min(prevItem.price, item.price),
+      close: item.price,
+      price: item.price,
+      volume: 0
+    });
+  }
+
+  const latestRaw = parsed[parsed.length - 1];
+  if (points.length > 0 && points[points.length - 1].time !== latestRaw.time) {
+    const prev = points[points.length - 1];
+    points.push({
+      time: latestRaw.time,
+      open: prev.close,
+      high: Math.max(prev.close, latestRaw.price),
+      low: Math.min(prev.close, latestRaw.price),
+      close: latestRaw.price,
+      price: latestRaw.price,
+      volume: 0
+    });
+  }
+
+  return points;
+}
+
 async function main() {
   console.log('[START] Fetching live market data...');
 
@@ -349,18 +491,23 @@ async function main() {
     }
   }
 
-  const [wallexRates, nobitexRates, abantetherRates, ramzinexRates, wallexSpark, nobitexSpark, abantetherSpark, ramzinexSpark] = await Promise.all([
+  const [
+    wallexRates, nobitexRates, abantetherRates, ramzinexRates, tetherlandRates,
+    wallexSpark, nobitexSpark, abantetherSpark, ramzinexSpark, tetherlandSpark
+  ] = await Promise.all([
     fetchWallexPrices(),
     fetchNobitexPrices(),
     fetchAbanTetherPrices(),
     fetchRamzinexPrices(),
+    fetchTetherLandPrices(),
     fetchWallexSparkline(),
     fetchNobitexSparkline(),
     fetchAbanTetherSparkline(),
-    fetchRamzinexSparkline()
+    fetchRamzinexSparkline(),
+    fetchTetherLandSparkline()
   ]);
 
-  const basePrice = (wallexRates && wallexRates.buyPrice) || (nobitexRates && nobitexRates.buyPrice) || (abantetherRates && abantetherRates.buyPrice) || (ramzinexRates && ramzinexRates.buyPrice) || 256300;
+  const basePrice = (wallexRates && wallexRates.buyPrice) || (nobitexRates && nobitexRates.buyPrice) || (abantetherRates && abantetherRates.buyPrice) || (ramzinexRates && ramzinexRates.buyPrice) || (tetherlandRates && tetherlandRates.buyPrice) || 256300;
 
   // Build exchange rates map
   const rates = {};
@@ -390,6 +537,9 @@ async function main() {
     } else if (def.id === 'ramzinex' && ramzinexRates) {
       item = { ...item, ...ramzinexRates };
       if (ramzinexSpark) item.sparkline = ramzinexSpark;
+    } else if (def.id === 'tetherland' && tetherlandRates) {
+      item = { ...item, ...tetherlandRates };
+      if (tetherlandSpark) item.sparkline = tetherlandSpark;
     } else {
       // Offset slightly relative to active basePrice
       const diff = def.baseBuy - 256300;
@@ -423,6 +573,12 @@ async function main() {
     if (ramzPts && ramzPts.length > 0) {
       candles[`ramzinex_${tf}`] = ramzPts;
     }
+
+    console.log(`[CANDLES] Fetching TetherLand ${tf}...`);
+    const tethPts = await fetchTetherLandCandles(tf);
+    if (tethPts && tethPts.length > 0) {
+      candles[`tetherland_${tf}`] = tethPts;
+    }
   }
 
   // Compute accurate 24H high & low from actual candles so table matches chart
@@ -442,6 +598,12 @@ async function main() {
     const ramzCandles = candles['ramzinex_24H'];
     rates.ramzinex.high24h = Math.max(...ramzCandles.map(p => p.high), rates.ramzinex.buyPrice);
     rates.ramzinex.low24h = Math.min(...ramzCandles.map(p => p.low), rates.ramzinex.sellPrice);
+  }
+
+  if (candles['tetherland_24H'] && candles['tetherland_24H'].length > 0 && rates.tetherland) {
+    const tethCandles = candles['tetherland_24H'];
+    rates.tetherland.high24h = Math.max(...tethCandles.map(p => p.high), rates.tetherland.high24h, rates.tetherland.buyPrice);
+    rates.tetherland.low24h = Math.min(...tethCandles.map(p => p.low), rates.tetherland.low24h, rates.tetherland.sellPrice);
   }
 
   // Ensure high24h >= buyPrice and low24h <= sellPrice for all exchanges

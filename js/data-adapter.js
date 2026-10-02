@@ -123,7 +123,7 @@ class DataAdapter {
         Object.keys(data.candles).forEach(tf => {
           const rawPoints = data.candles[tf];
           if (Array.isArray(rawPoints) && rawPoints.length > 0) {
-            const cleanTf = tf.replace('abantether_', '').replace('ramzinex_', '');
+            const cleanTf = tf.replace(/^[a-z0-9]+_/, '');
             const formatted = rawPoints.map(p => ({
               ...p,
               time: new Date(p.time),
@@ -556,6 +556,135 @@ class DataAdapter {
       emptyRamz.source = 'ramzinex';
       emptyRamz.message = 'داده‌های تاریخچه رمزینکس در دسترس نیست';
       return emptyRamz;
+    }
+
+    // 5. When source is TetherLand:
+    if (sourceId === 'tetherland') {
+      if (this.historyCache.has(cacheKey) && this.historyCache.get(cacheKey).length > 0) {
+        return this.historyCache.get(cacheKey);
+      }
+
+      try {
+        let tUrl = '';
+        if (timeframe === '1H' || timeframe === '24H') {
+          tUrl = 'https://service.tetherland.com/api/v5/chart?rate=1&mode=m';
+        } else if (timeframe === '7D') {
+          tUrl = 'https://service.tetherland.com/api/v5/chart?rate=7&mode=h';
+        } else if (timeframe === '30D') {
+          tUrl = 'https://service.tetherland.com/api/v5/chart?rate=30&mode=h';
+        } else if (timeframe === '1Y') {
+          tUrl = 'https://service.tetherland.com/api/v5/chart?rate=365&mode=d';
+        }
+
+        if (tUrl) {
+          const fetchUrl = isLocal ? (this.getProxyUrl(tUrl) || tUrl) : tUrl;
+          const controller = new AbortController();
+          const timeout = setTimeout(() => controller.abort(), 3000);
+          const res = await fetch(fetchUrl, { signal: controller.signal });
+          clearTimeout(timeout);
+          if (res.ok) {
+            const json = await res.json();
+            if (json.data && Array.isArray(json.data.prices) && json.data.prices.length > 0) {
+              const raw = [...json.data.prices].reverse();
+              const parsed = [];
+              let lastTime = 0;
+              for (const item of raw) {
+                const s = item.datetime.trim();
+                let t = 0;
+                if (s.includes(' ')) {
+                  const parts = s.split(' ');
+                  let tm = parts[1];
+                  if (tm.length === 2) tm = tm + ':00';
+                  t = new Date(`${parts[0]}T${tm}:00+03:30`).getTime();
+                } else {
+                  t = new Date(`${s}T00:00:00+03:30`).getTime();
+                }
+                if (t > lastTime) {
+                  parsed.push({ time: t, price: Math.round(Number(item.price)) });
+                  lastTime = t;
+                }
+              }
+
+              if (parsed.length > 0) {
+                let points = [];
+                if (timeframe === '1H') {
+                  const curNow = Date.now();
+                  const oneHourAgo = curNow - 3600 * 1000;
+                  let curPrice = parsed[0].price;
+                  for (const p of parsed) {
+                    if (p.time <= oneHourAgo) curPrice = p.price;
+                  }
+                  for (let m = 60; m >= 0; m--) {
+                    const t = Math.floor((curNow - m * 60000) / 60000) * 60000;
+                    const applicable = parsed.filter(p => p.time <= t);
+                    const pVal = applicable.length > 0 ? applicable[applicable.length - 1].price : curPrice;
+                    const d = new Date(t);
+                    points.push({
+                      time: d,
+                      open: pVal,
+                      high: pVal,
+                      low: pVal,
+                      close: pVal,
+                      price: pVal,
+                      volume: 0,
+                      label: this.formatTimeLabel(d, timeframe)
+                    });
+                  }
+                } else {
+                  const step = Math.max(1, Math.floor(parsed.length / 140));
+                  for (let i = 0; i < parsed.length; i += step) {
+                    const item = parsed[i];
+                    const prevItem = i > 0 ? parsed[i - 1] : item;
+                    const d = new Date(item.time);
+                    points.push({
+                      time: d,
+                      open: prevItem.price,
+                      high: Math.max(prevItem.price, item.price),
+                      low: Math.min(prevItem.price, item.price),
+                      close: item.price,
+                      price: item.price,
+                      volume: 0,
+                      label: this.formatTimeLabel(d, timeframe)
+                    });
+                  }
+                  const latestRaw = parsed[parsed.length - 1];
+                  if (points.length > 0 && points[points.length - 1].time.getTime() !== latestRaw.time) {
+                    const prev = points[points.length - 1];
+                    const d = new Date(latestRaw.time);
+                    points.push({
+                      time: d,
+                      open: prev.close,
+                      high: Math.max(prev.close, latestRaw.price),
+                      low: Math.min(prev.close, latestRaw.price),
+                      close: latestRaw.price,
+                      price: latestRaw.price,
+                      volume: 0,
+                      label: this.formatTimeLabel(d, timeframe)
+                    });
+                  }
+                }
+
+                if (points.length > 0) {
+                  this.historyCache.set(cacheKey, points);
+                  return points;
+                }
+              }
+            }
+          }
+        }
+      } catch (err) {
+        console.warn('TetherLand chart fetch error:', err.message);
+      }
+
+      if (this.historyCache.has(cacheKey) && this.historyCache.get(cacheKey).length > 0) {
+        return this.historyCache.get(cacheKey);
+      }
+
+      const emptyTether = [];
+      emptyTether.noData = true;
+      emptyTether.source = 'tetherland';
+      emptyTether.message = 'داده‌های تاریخچه تترلند در دسترس نیست';
+      return emptyTether;
     }
 
     const emptyDefault = [];
