@@ -687,6 +687,86 @@ class DataAdapter {
       return emptyTether;
     }
 
+    // 6. When source is Tabdeal:
+    if (sourceId === 'tabdeal') {
+      if (this.historyCache.has(cacheKey) && this.historyCache.get(cacheKey).length > 0) {
+        return this.historyCache.get(cacheKey);
+      }
+
+      if (isLocal) {
+        try {
+          const tabTfMap = {
+            '1H': { resolution: '1', sec: 3600, countback: 60 },
+            '24H': { resolution: '15', sec: 86400, countback: 96 },
+            '7D': { resolution: '60', sec: 7 * 86400, countback: 168 },
+            '30D': { resolution: '240', sec: 30 * 86400, countback: 180 },
+            '1Y': { resolution: '1D', sec: 365 * 86400, countback: 365 }
+          };
+          const tcfg = tabTfMap[timeframe] || { resolution: '60', sec: 86400, countback: 96 };
+          const tfrom = now - tcfg.sec;
+          const targetUrl = `https://api-web.tabdeal.org/r/plots/history/?first_currency_symbol=USDT&second_currency_symbol=IRT&from=${tfrom}&to=${now}&resolution=${tcfg.resolution}&countback=${tcfg.countback}&symbol=USDT_IRT`;
+          const proxyUrl = this.getProxyUrl(targetUrl);
+          if (proxyUrl) {
+            const controller = new AbortController();
+            const timeout = setTimeout(() => controller.abort(), 2500);
+            const res = await fetch(proxyUrl, { signal: controller.signal });
+            clearTimeout(timeout);
+            if (res.ok) {
+              const json = await res.json();
+              if (json && Array.isArray(json.data) && json.data.length > 0) {
+                const raw = json.data;
+                const points = [];
+                const step = Math.max(1, Math.floor(raw.length / 140));
+                for (let i = 0; i < raw.length; i += step) {
+                  const item = raw[i];
+                  const d = new Date(item.time * 1000);
+                  points.push({
+                    time: d,
+                    open: Math.round(Number(item.open)),
+                    high: Math.round(Number(item.high)),
+                    low: Math.round(Number(item.low)),
+                    close: Math.round(Number(item.close)),
+                    price: Math.round(Number(item.close)),
+                    volume: Math.round(Number(item.volume || 0)),
+                    label: this.formatTimeLabel(d, timeframe)
+                  });
+                }
+                const lastIdx = raw.length - 1;
+                const lastTime = new Date(raw[lastIdx].time * 1000);
+                if (points.length && points[points.length - 1].time.getTime() !== lastTime.getTime()) {
+                  const last = raw[lastIdx];
+                  points.push({
+                    time: lastTime,
+                    open: Math.round(Number(last.open)),
+                    high: Math.round(Number(last.high)),
+                    low: Math.round(Number(last.low)),
+                    close: Math.round(Number(last.close)),
+                    price: Math.round(Number(last.close)),
+                    volume: Math.round(Number(last.volume || 0)),
+                    label: this.formatTimeLabel(lastTime, timeframe)
+                  });
+                }
+                this.historyCache.set(cacheKey, points);
+                return points;
+              }
+            }
+          }
+        } catch (err) {
+          console.warn('Tabdeal history fetch error:', err.message);
+        }
+      }
+
+      if (this.historyCache.has(cacheKey) && this.historyCache.get(cacheKey).length > 0) {
+        return this.historyCache.get(cacheKey);
+      }
+
+      const emptyTab = [];
+      emptyTab.noData = true;
+      emptyTab.source = 'tabdeal';
+      emptyTab.message = 'داده‌های تاریخچه تبدیل در دسترس نیست';
+      return emptyTab;
+    }
+
     const emptyDefault = [];
     emptyDefault.noData = true;
     emptyDefault.source = sourceId;

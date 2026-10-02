@@ -478,6 +478,98 @@ async function fetchTetherLandCandles(timeframe) {
   return points;
 }
 
+async function fetchTabdealPrices() {
+  const [dynJson, depthJson] = await Promise.all([
+    safeFetchJson('https://api-web.tabdeal.org/r/plots/currencies/dynamic-info/'),
+    safeFetchJson('https://api-web.tabdeal.org/r/api/v1/depth?symbol=USDTIRT')
+  ]);
+
+  const usdtDyn = dynJson && dynJson.currencies && dynJson.currencies.USDT && dynJson.currencies.USDT.IRT;
+  let buyPrice = usdtDyn ? Math.round(Number(usdtDyn.price)) : 262000;
+  let sellPrice = buyPrice;
+  if (depthJson && depthJson.asks && depthJson.asks[0] && depthJson.bids && depthJson.bids[0]) {
+    buyPrice = Math.round(Number(depthJson.asks[0][0]));
+    sellPrice = Math.round(Number(depthJson.bids[0][0]));
+  }
+
+  const high24 = usdtDyn ? Math.round(Number(usdtDyn.high_24)) : buyPrice;
+  const low24 = usdtDyn ? Math.round(Number(usdtDyn.low_24)) : sellPrice;
+  const change24 = usdtDyn ? Number(usdtDyn.change_percent_24 || 0) : 0;
+
+  return {
+    buyPrice,
+    sellPrice,
+    change24h: change24,
+    high24h: Math.max(high24, buyPrice),
+    low24h: Math.min(low24, sellPrice),
+    vol24h: 1420000
+  };
+}
+
+async function fetchTabdealSparkline() {
+  const now = Math.floor(Date.now() / 1000);
+  const from = now - 86400;
+  const url = `https://api-web.tabdeal.org/r/plots/history/?first_currency_symbol=USDT&second_currency_symbol=IRT&from=${from}&to=${now}&resolution=60&countback=24&symbol=USDT_IRT`;
+  const json = await safeFetchJson(url);
+  if (json && Array.isArray(json.data) && json.data.length > 0) {
+    return json.data.map(c => Math.round(Number(c.close)));
+  }
+  return null;
+}
+
+async function fetchTabdealCandles(timeframe) {
+  const tfMap = {
+    '1H': { resolution: '1', sec: 3600, countback: 60 },
+    '24H': { resolution: '15', sec: 86400, countback: 96 },
+    '7D': { resolution: '60', sec: 7 * 86400, countback: 168 },
+    '30D': { resolution: '240', sec: 30 * 86400, countback: 180 },
+    '1Y': { resolution: '1D', sec: 365 * 86400, countback: 365 }
+  };
+  const cfg = tfMap[timeframe];
+  if (!cfg) return null;
+
+  const now = Math.floor(Date.now() / 1000);
+  const from = now - cfg.sec;
+  const url = `https://api-web.tabdeal.org/r/plots/history/?first_currency_symbol=USDT&second_currency_symbol=IRT&from=${from}&to=${now}&resolution=${cfg.resolution}&countback=${cfg.countback}&symbol=USDT_IRT`;
+  const json = await safeFetchJson(url);
+
+  if (json && Array.isArray(json.data) && json.data.length > 0) {
+    const raw = json.data;
+    const points = [];
+    const step = Math.max(1, Math.floor(raw.length / 140));
+    for (let i = 0; i < raw.length; i += step) {
+      const item = raw[i];
+      points.push({
+        time: item.time * 1000,
+        open: Math.round(Number(item.open)),
+        high: Math.round(Number(item.high)),
+        low: Math.round(Number(item.low)),
+        close: Math.round(Number(item.close)),
+        price: Math.round(Number(item.close)),
+        volume: Math.round(Number(item.volume || 0))
+      });
+    }
+
+    const lastIdx = raw.length - 1;
+    const lastTime = raw[lastIdx].time * 1000;
+    if (points.length > 0 && points[points.length - 1].time !== lastTime) {
+      const last = raw[lastIdx];
+      points.push({
+        time: lastTime,
+        open: Math.round(Number(last.open)),
+        high: Math.round(Number(last.high)),
+        low: Math.round(Number(last.low)),
+        close: Math.round(Number(last.close)),
+        price: Math.round(Number(last.close)),
+        volume: Math.round(Number(last.volume || 0))
+      });
+    }
+
+    return points;
+  }
+  return null;
+}
+
 async function main() {
   console.log('[START] Fetching live market data...');
 
@@ -492,22 +584,24 @@ async function main() {
   }
 
   const [
-    wallexRates, nobitexRates, abantetherRates, ramzinexRates, tetherlandRates,
-    wallexSpark, nobitexSpark, abantetherSpark, ramzinexSpark, tetherlandSpark
+    wallexRates, nobitexRates, abantetherRates, ramzinexRates, tetherlandRates, tabdealRates,
+    wallexSpark, nobitexSpark, abantetherSpark, ramzinexSpark, tetherlandSpark, tabdealSpark
   ] = await Promise.all([
     fetchWallexPrices(),
     fetchNobitexPrices(),
     fetchAbanTetherPrices(),
     fetchRamzinexPrices(),
     fetchTetherLandPrices(),
+    fetchTabdealPrices(),
     fetchWallexSparkline(),
     fetchNobitexSparkline(),
     fetchAbanTetherSparkline(),
     fetchRamzinexSparkline(),
-    fetchTetherLandSparkline()
+    fetchTetherLandSparkline(),
+    fetchTabdealSparkline()
   ]);
 
-  const basePrice = (wallexRates && wallexRates.buyPrice) || (nobitexRates && nobitexRates.buyPrice) || (abantetherRates && abantetherRates.buyPrice) || (ramzinexRates && ramzinexRates.buyPrice) || (tetherlandRates && tetherlandRates.buyPrice) || 256300;
+  const basePrice = (wallexRates && wallexRates.buyPrice) || (nobitexRates && nobitexRates.buyPrice) || (abantetherRates && abantetherRates.buyPrice) || (ramzinexRates && ramzinexRates.buyPrice) || (tetherlandRates && tetherlandRates.buyPrice) || (tabdealRates && tabdealRates.buyPrice) || 256300;
 
   // Build exchange rates map
   const rates = {};
@@ -540,6 +634,9 @@ async function main() {
     } else if (def.id === 'tetherland' && tetherlandRates) {
       item = { ...item, ...tetherlandRates };
       if (tetherlandSpark) item.sparkline = tetherlandSpark;
+    } else if (def.id === 'tabdeal' && tabdealRates) {
+      item = { ...item, ...tabdealRates };
+      if (tabdealSpark) item.sparkline = tabdealSpark;
     } else {
       // Offset slightly relative to active basePrice
       const diff = def.baseBuy - 256300;
@@ -579,6 +676,12 @@ async function main() {
     if (tethPts && tethPts.length > 0) {
       candles[`tetherland_${tf}`] = tethPts;
     }
+
+    console.log(`[CANDLES] Fetching Tabdeal ${tf}...`);
+    const tabPts = await fetchTabdealCandles(tf);
+    if (tabPts && tabPts.length > 0) {
+      candles[`tabdeal_${tf}`] = tabPts;
+    }
   }
 
   // Compute accurate 24H high & low from actual candles so table matches chart
@@ -604,6 +707,16 @@ async function main() {
     const tethCandles = candles['tetherland_24H'];
     rates.tetherland.high24h = Math.max(...tethCandles.map(p => p.high), rates.tetherland.high24h, rates.tetherland.buyPrice);
     rates.tetherland.low24h = Math.min(...tethCandles.map(p => p.low), rates.tetherland.low24h, rates.tetherland.sellPrice);
+  }
+
+  if (candles['tabdeal_24H'] && candles['tabdeal_24H'].length > 0 && rates.tabdeal) {
+    const tabCandles = candles['tabdeal_24H'];
+    rates.tabdeal.high24h = Math.max(...tabCandles.map(p => p.high), rates.tabdeal.high24h, rates.tabdeal.buyPrice);
+    rates.tabdeal.low24h = Math.min(...tabCandles.map(p => p.low), rates.tabdeal.low24h, rates.tabdeal.sellPrice);
+    const totalUsdtVol = tabCandles.reduce((acc, c) => acc + (c.volume || 0), 0);
+    if (totalUsdtVol > 0) {
+      rates.tabdeal.vol24h = Math.round(totalUsdtVol * rates.tabdeal.buyPrice);
+    }
   }
 
   // Ensure high24h >= buyPrice and low24h <= sellPrice for all exchanges
