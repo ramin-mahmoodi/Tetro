@@ -222,7 +222,6 @@ class UIRenderer {
 
     const ctx = canvas.getContext('2d');
     const data = window.dataAdapter.getSparkline(exchangeId);
-    if (!data || data.length < 2) return;
 
     const dpr = window.devicePixelRatio || 1;
     const isMobile = window.innerWidth <= 860;
@@ -233,8 +232,20 @@ class UIRenderer {
     canvas.height = Math.round(h * dpr);
     ctx.resetTransform();
     ctx.scale(dpr, dpr);
-
     ctx.clearRect(0, 0, w, h);
+
+    if (!data || data.length < 2) {
+      // Subtle dashed flat line if exchange history is not sent by exchange server (e.g. Nobitex)
+      ctx.strokeStyle = 'rgba(150, 150, 150, 0.35)';
+      ctx.lineWidth = 1;
+      ctx.setLineDash([4, 4]);
+      ctx.beginPath();
+      ctx.moveTo(6, h / 2);
+      ctx.lineTo(w - 6, h / 2);
+      ctx.stroke();
+      ctx.setLineDash([]);
+      return;
+    }
 
     const min = Math.min(...data);
     const max = Math.max(...data);
@@ -261,29 +272,21 @@ class UIRenderer {
     ctx.beginPath();
     ctx.moveTo(points[0].x, h);
     points.forEach((p, idx) => {
-      if (idx === 0) {
-        ctx.lineTo(p.x, p.y);
-      } else {
-        const prev = points[idx - 1];
-        const cx = (prev.x + p.x) / 2;
-        ctx.bezierCurveTo(cx, prev.y, cx, p.y, p.x, p.y);
-      }
+      ctx.lineTo(p.x, p.y);
     });
     ctx.lineTo(points[points.length - 1].x, h);
     ctx.closePath();
     ctx.fill();
 
-    // Smooth Line
+    // Exact geometric 24h line tracking the main chart candles
     ctx.strokeStyle = lineColor;
-    ctx.lineWidth = 1.8;
+    ctx.lineWidth = 1.7;
     ctx.beginPath();
     points.forEach((p, idx) => {
       if (idx === 0) {
         ctx.moveTo(p.x, p.y);
       } else {
-        const prev = points[idx - 1];
-        const cx = (prev.x + p.x) / 2;
-        ctx.bezierCurveTo(cx, prev.y, cx, p.y, p.x, p.y);
+        ctx.lineTo(p.x, p.y);
       }
     });
     ctx.stroke();

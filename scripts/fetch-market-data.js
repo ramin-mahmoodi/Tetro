@@ -963,6 +963,30 @@ async function main() {
     if (r.low24h > r.sellPrice) r.low24h = r.sellPrice;
   });
 
+  // Derive table 24h sparklines directly from the exact 24H candles of each exchange!
+  const sparklineMap = {
+    wallex: '24H',
+    bitpin: 'bitpin_24H',
+    ramzinex: 'ramzinex_24H',
+    abantether: 'abantether_24H',
+    tetherland: 'tetherland_24H',
+    tabdeal: 'tabdeal_24H',
+    exir: 'exir_24H'
+  };
+
+  Object.keys(sparklineMap).forEach(id => {
+    const cKey = sparklineMap[id];
+    if (candles[cKey] && Array.isArray(candles[cKey]) && candles[cKey].length > 0 && rates[id]) {
+      // 100% exact copy of the 24H candle close prices shown on the main chart!
+      rates[id].sparkline = candles[cKey].map(c => Math.round(Number(c.close || c.price)));
+    }
+  });
+
+  // Nobitex has no 24h candle history from server (returns no_data), so sparkline is empty
+  if (rates.nobitex) {
+    rates.nobitex.sparkline = [];
+  }
+
   const output = {
     updatedAt: new Date().toISOString(),
     timestamp: Math.floor(Date.now() / 1000),

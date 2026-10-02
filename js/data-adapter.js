@@ -160,8 +160,17 @@ class DataAdapter {
   }
 
   getSparkline(exchangeId) {
+    // 1. Try to get directly from cached 24H candles of that exchange
+    const cKey = exchangeId === 'wallex' ? '24H' : `${exchangeId}_24H`;
+    if (this.historyCache.has(cKey)) {
+      const candles = this.historyCache.get(cKey);
+      if (Array.isArray(candles) && candles.length > 1) {
+        return candles.map(c => Math.round(Number(c.close != null ? c.close : c.price)));
+      }
+    }
+    // 2. Fallback to rates sparkline
     const item = this.rates.get(exchangeId);
-    return item ? item.sparkline : [];
+    return item && Array.isArray(item.sparkline) ? item.sparkline : [];
   }
 
   getLastUpdateTime() {
