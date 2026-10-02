@@ -141,10 +141,7 @@ class DataAdapter {
 
       // Notify UI
       this.notify({
-        type: 'tick',
-        exchangeId: 'wallex',
-        direction: 'none',
-        rate: this.rates.get('wallex'),
+        type: 'market_loaded',
         stats: this.getAggregateStats()
       });
 

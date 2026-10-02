@@ -16,13 +16,14 @@ class UIRenderer {
     this.setupControls();
     this.renderAll();
 
-    // Subscribe to live data adapter ticks
+    // Subscribe to live data adapter ticks & updates
     window.dataAdapter.subscribe((event) => {
       if (event.type === 'tick') {
         this.handleTick(event);
         this.updateLastUpdateTimeUI();
-      } else if (event.type === 'currency_change') {
+      } else if (event.type === 'market_loaded' || event.type === 'currency_change') {
         this.renderAll();
+        this.updateLastUpdateTimeUI();
       }
     });
 
@@ -308,6 +309,19 @@ class UIRenderer {
 
       buyNumEl.classList.add(flashClass);
       sellNumEl.classList.add(flashClass);
+    }
+
+    // Update 24h high/low range in the row
+    const rowEl = document.getElementById(`row-${event.exchangeId}`);
+    if (rowEl && event.rate) {
+      const highEl = rowEl.querySelector('.range-high .range-val');
+      const lowEl = rowEl.querySelector('.range-low .range-val');
+      if (highEl && event.rate.high24h) {
+        highEl.textContent = window.dataAdapter.formatPriceNum(event.rate.high24h);
+      }
+      if (lowEl && event.rate.low24h) {
+        lowEl.textContent = window.dataAdapter.formatPriceNum(event.rate.low24h);
+      }
     }
 
     // Redraw sparkline for this exchange
