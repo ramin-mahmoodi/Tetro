@@ -329,6 +329,26 @@ async function main() {
     }
   }
 
+  // Compute accurate 24H high & low from actual candles so table matches chart
+  if (candles['abantether_24H'] && candles['abantether_24H'].length > 0 && rates.abantether) {
+    const abanCandles = candles['abantether_24H'];
+    rates.abantether.high24h = Math.max(...abanCandles.map(p => p.high), rates.abantether.buyPrice);
+    rates.abantether.low24h = Math.min(...abanCandles.map(p => p.low), rates.abantether.sellPrice);
+  }
+
+  if (candles['24H'] && candles['24H'].length > 0 && rates.wallex) {
+    const wallexCandles = candles['24H'];
+    rates.wallex.high24h = Math.max(...wallexCandles.map(p => p.high), rates.wallex.buyPrice);
+    rates.wallex.low24h = Math.min(...wallexCandles.map(p => p.low), rates.wallex.sellPrice);
+  }
+
+  // Ensure high24h >= buyPrice and low24h <= sellPrice for all exchanges
+  Object.keys(rates).forEach(id => {
+    const r = rates[id];
+    if (r.high24h < r.buyPrice) r.high24h = r.buyPrice;
+    if (r.low24h > r.sellPrice) r.low24h = r.sellPrice;
+  });
+
   const output = {
     updatedAt: new Date().toISOString(),
     timestamp: Math.floor(Date.now() / 1000),

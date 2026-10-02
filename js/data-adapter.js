@@ -107,8 +107,8 @@ class DataAdapter {
           current.buyPrice = item.buyPrice || current.buyPrice;
           current.sellPrice = item.sellPrice || current.sellPrice;
           current.change24h = item.change24h != null ? item.change24h : current.change24h;
-          current.high24h = item.high24h || current.high24h;
-          current.low24h = item.low24h || current.low24h;
+          current.high24h = Math.max(item.high24h || current.high24h, current.buyPrice);
+          current.low24h = Math.min(item.low24h || current.low24h, current.sellPrice);
           current.vol24h = item.vol24h || current.vol24h;
           if (Array.isArray(item.sparkline) && item.sparkline.length > 0) {
             current.sparkline = item.sparkline;
