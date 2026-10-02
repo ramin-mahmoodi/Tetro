@@ -106,7 +106,7 @@ class DataAdapter {
         if (current && item) {
           current.buyPrice = item.buyPrice || current.buyPrice;
           current.sellPrice = item.sellPrice || current.sellPrice;
-          current.change24h = item.change24h != null ? item.change24h : current.change24h;
+          current.change24h = item.change24h != null ? Number(Number(item.change24h).toFixed(2)) : current.change24h;
           current.high24h = Math.max(item.high24h || current.high24h, current.buyPrice);
           current.low24h = Math.min(item.low24h || current.low24h, current.sellPrice);
           current.vol24h = item.vol24h || current.vol24h;
@@ -1056,7 +1056,7 @@ class DataAdapter {
         const dir = (bid || last) > wallexRate.buyPrice ? 'up' : ((bid || last) < wallexRate.buyPrice ? 'down' : 'none');
         wallexRate.buyPrice = bid || last;
         wallexRate.sellPrice = ask || last;
-        wallexRate.change24h = ch24h;
+        wallexRate.change24h = Number(Number(ch24h).toFixed(2));
         wallexRate.vol24h = vol;
         wallexRate.high24h = high;
         wallexRate.low24h = low;
@@ -1103,7 +1103,7 @@ class DataAdapter {
         const dir = activeBuy > nobitexRate.buyPrice ? 'up' : (activeBuy < nobitexRate.buyPrice ? 'down' : 'none');
         nobitexRate.buyPrice = activeBuy;
         nobitexRate.sellPrice = activeSell;
-        nobitexRate.change24h = change24h;
+        nobitexRate.change24h = Number(Number(change24h).toFixed(2));
         nobitexRate.vol24h = vol24h;
         nobitexRate.high24h = high24h;
         nobitexRate.low24h = low24h;
@@ -1205,7 +1205,7 @@ class DataAdapter {
         const dir = price > bpRate.buyPrice ? 'up' : (price < bpRate.buyPrice ? 'down' : 'none');
         bpRate.buyPrice = price;
         bpRate.sellPrice = price;
-        bpRate.change24h = ch24h;
+        bpRate.change24h = Number(Number(ch24h).toFixed(2));
         bpRate.high24h = high;
         bpRate.low24h = low;
         bpRate.vol24h = volToman;

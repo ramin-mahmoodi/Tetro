@@ -76,6 +76,11 @@ class UIRenderer {
     this.renderExchangeRows();
   }
 
+  formatChange(val) {
+    if (val == null || isNaN(val)) return 0;
+    return Number(Number(val).toFixed(2));
+  }
+
   renderTopMetrics() {
     const stats = window.dataAdapter.getAggregateStats();
     if (!stats) return;
@@ -90,11 +95,12 @@ class UIRenderer {
       heroPriceEl.textContent = window.dataAdapter.formatPrice(stats.avgBuy);
     }
     if (heroChangeEl) {
-      const isPos = stats.change24h >= 0;
+      const chVal = this.formatChange(stats.change24h);
+      const isPos = chVal >= 0;
       heroChangeEl.className = `change-badge ${isPos ? 'positive' : 'negative'}`;
       heroChangeEl.innerHTML = `
         <i class="ph ${isPos ? 'ph-trend-up' : 'ph-trend-down'}"></i>
-        <span>${isPos ? '+' : ''}${stats.change24h}%</span>
+        <span>${isPos ? '+' : ''}${chVal}%</span>
       `;
     }
     if (metricHighEl) {
@@ -138,7 +144,8 @@ class UIRenderer {
       row.className = 'exchange-row';
       row.id = `row-${ex.id}`;
 
-      const isPos = ex.change24h >= 0;
+      const chVal = this.formatChange(ex.change24h);
+      const isPos = chVal >= 0;
       const buyFormatted = window.dataAdapter.formatPriceNum(ex.buyPrice);
       const sellFormatted = window.dataAdapter.formatPriceNum(ex.sellPrice);
       const highFormatted = window.dataAdapter.formatPriceNum(ex.high24h);
@@ -177,7 +184,7 @@ class UIRenderer {
         <div class="ex-col-change">
           <span class="change-badge ${isPos ? 'positive' : 'negative'}">
             <i class="ph ${isPos ? 'ph-trend-up' : 'ph-trend-down'}"></i>
-            <span>${isPos ? '+' : ''}${ex.change24h}%</span>
+            <span>${isPos ? '+' : ''}${chVal}%</span>
           </span>
         </div>
 
@@ -205,7 +212,7 @@ class UIRenderer {
   drawAllSparklines() {
     const list = window.dataAdapter.getExchangeRates();
     list.forEach(ex => {
-      this.drawSparkline(ex.id, ex.change24h >= 0);
+      this.drawSparkline(ex.id, this.formatChange(ex.change24h) >= 0);
     });
   }
 
@@ -311,9 +318,20 @@ class UIRenderer {
       sellNumEl.classList.add(flashClass);
     }
 
-    // Update 24h high/low range in the row
+    // Update 24h high/low range and change badge in the row
     const rowEl = document.getElementById(`row-${event.exchangeId}`);
     if (rowEl && event.rate) {
+      const changeEl = rowEl.querySelector('.ex-col-change .change-badge');
+      if (changeEl && event.rate.change24h != null) {
+        const chVal = this.formatChange(event.rate.change24h);
+        const isPos = chVal >= 0;
+        changeEl.className = `change-badge ${isPos ? 'positive' : 'negative'}`;
+        changeEl.innerHTML = `
+          <i class="ph ${isPos ? 'ph-trend-up' : 'ph-trend-down'}"></i>
+          <span>${isPos ? '+' : ''}${chVal}%</span>
+        `;
+      }
+
       const highEl = rowEl.querySelector('.range-high .range-val');
       const lowEl = rowEl.querySelector('.range-low .range-val');
       if (highEl && event.rate.high24h) {
@@ -325,7 +343,7 @@ class UIRenderer {
     }
 
     // Redraw sparkline for this exchange
-    this.drawSparkline(event.exchangeId, event.rate.change24h >= 0);
+    this.drawSparkline(event.exchangeId, this.formatChange(event.rate.change24h) >= 0);
   }
 
   updateLastUpdateTimeUI() {

@@ -485,7 +485,7 @@ async function fetchTabdealPrices() {
     const price = Math.round(Number(usdtDyn.price));
     const high24 = Math.round(Number(usdtDyn.high_24 || price));
     const low24 = Math.round(Number(usdtDyn.low_24 || price));
-    const change24 = Number(usdtDyn.change_percent_24 || 0);
+    const change24 = Number(Number(usdtDyn.change_percent_24 || 0).toFixed(2));
 
     return {
       buyPrice: price,
@@ -837,6 +837,9 @@ async function main() {
       item.sellPrice = basePrice + diff - 80;
       item.high24h = Math.round(item.buyPrice * 1.008);
       item.low24h = Math.round(item.buyPrice * 0.992);
+    }
+    if (item.change24h != null) {
+      item.change24h = Number(Number(item.change24h).toFixed(2));
     }
     rates[def.id] = item;
   });
