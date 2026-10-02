@@ -5,8 +5,8 @@ on:
     branches:
       - main
   schedule:
-    # Run every 10 minutes
-    - cron: '*/10 * * * *'
+    # Run every 10 minutes (offset by 3 minutes to bypass GitHub shared runner queue delays)
+    - cron: '3,13,23,33,43,53 * * * *'
   workflow_dispatch:
 
 permissions:

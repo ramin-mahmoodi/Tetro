@@ -72,6 +72,11 @@ class DataAdapter {
     // Load pre-built / synced market.json (from GitHub Actions)
     this.loadMarketDataJson();
 
+    // Check for updated market.json every 60 seconds in background
+    setInterval(() => {
+      this.loadMarketDataJson();
+    }, 60000);
+
     // Start live fetching from real exchange API endpoints only on localhost where dev proxy runs
     if (typeof window !== 'undefined' && (window.location.hostname === 'localhost' || window.location.hostname === '127.0.0.1')) {
       this.startLiveApiFetchers();
