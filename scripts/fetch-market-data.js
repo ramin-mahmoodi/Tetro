@@ -479,31 +479,24 @@ async function fetchTetherLandCandles(timeframe) {
 }
 
 async function fetchTabdealPrices() {
-  const [dynJson, depthJson] = await Promise.all([
-    safeFetchJson('https://api-web.tabdeal.org/r/plots/currencies/dynamic-info/'),
-    safeFetchJson('https://api-web.tabdeal.org/r/api/v1/depth?symbol=USDTIRT')
-  ]);
-
+  const dynJson = await safeFetchJson('https://api-web.tabdeal.org/r/plots/currencies/dynamic-info/');
   const usdtDyn = dynJson && dynJson.currencies && dynJson.currencies.USDT && dynJson.currencies.USDT.IRT;
-  let buyPrice = usdtDyn ? Math.round(Number(usdtDyn.price)) : 262000;
-  let sellPrice = buyPrice;
-  if (depthJson && depthJson.asks && depthJson.asks[0] && depthJson.bids && depthJson.bids[0]) {
-    buyPrice = Math.round(Number(depthJson.asks[0][0]));
-    sellPrice = Math.round(Number(depthJson.bids[0][0]));
+  if (usdtDyn) {
+    const price = Math.round(Number(usdtDyn.price));
+    const high24 = Math.round(Number(usdtDyn.high_24 || price));
+    const low24 = Math.round(Number(usdtDyn.low_24 || price));
+    const change24 = Number(usdtDyn.change_percent_24 || 0);
+
+    return {
+      buyPrice: price,
+      sellPrice: price,
+      change24h: change24,
+      high24h: Math.max(high24, price),
+      low24h: Math.min(low24, price),
+      vol24h: 1420000
+    };
   }
-
-  const high24 = usdtDyn ? Math.round(Number(usdtDyn.high_24)) : buyPrice;
-  const low24 = usdtDyn ? Math.round(Number(usdtDyn.low_24)) : sellPrice;
-  const change24 = usdtDyn ? Number(usdtDyn.change_percent_24 || 0) : 0;
-
-  return {
-    buyPrice,
-    sellPrice,
-    change24h: change24,
-    high24h: Math.max(high24, buyPrice),
-    low24h: Math.min(low24, sellPrice),
-    vol24h: 1420000
-  };
+  return null;
 }
 
 async function fetchTabdealSparkline() {
