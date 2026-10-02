@@ -14,17 +14,6 @@ const EXCHANGES_DEF = [
   { id: 'bitpin', name: 'Bitpin', faName: 'بیت‌پین', baseBuy: 256350, baseSell: 256250, vol24h: 2400000, change24h: 0.50 }
 ];
 
-function generateInitialSparkline(base, count = 22) {
-  const arr = [];
-  let val = base - (Math.random() * 200);
-  for (let i = 0; i < count; i++) {
-    val += (Math.random() - 0.48) * 80;
-    arr.push(Math.round(val));
-  }
-  arr[arr.length - 1] = base;
-  return arr;
-}
-
 class DataAdapter {
   constructor() {
     this.currentCurrency = 'TOMAN'; // TOMAN | RIAL | USD
@@ -47,7 +36,7 @@ class DataAdapter {
   }
 
   init() {
-    // Populate initial rates with sparkline data
+    // Populate baseline structure (real data is loaded from market.json / live APIs)
     EXCHANGES_DEF.forEach(ex => {
       this.rates.set(ex.id, {
         id: ex.id,
@@ -58,18 +47,15 @@ class DataAdapter {
         spread: ex.baseBuy - ex.baseSell,
         vol24h: ex.vol24h,
         change24h: ex.change24h,
-        high24h: Math.round(ex.baseBuy * 1.018),
-        low24h: Math.round(ex.baseBuy * 0.988),
-        sparkline: generateInitialSparkline(ex.baseBuy),
+        high24h: ex.baseBuy,
+        low24h: ex.baseSell,
+        sparkline: [],
         lastUpdate: new Date(),
         lastDirection: 'none'
       });
     });
 
-    // Start live simulation ticks for general market dynamism
-    this.startLiveSimulation();
-
-    // Load pre-built / synced market.json (from GitHub Actions)
+    // Load real pre-built market.json (synced from real exchange APIs)
     this.loadMarketDataJson();
 
     // Check for updated market.json every 60 seconds in background
@@ -935,59 +921,6 @@ class DataAdapter {
     return emptyDefault;
   }
 
-  getFallbackHistory(timeframe = '24H', sourceId = 'aggregate') {
-    const points = [];
-    const now = Date.now();
-    let count = 40;
-    let intervalMs = 60 * 1000;
-    let volatility = 50;
-
-    if (timeframe === '1H') {
-      count = 50;
-      intervalMs = 60 * 1000;
-      volatility = 40;
-    } else if (timeframe === '24H') {
-      count = 48;
-      intervalMs = 30 * 60 * 1000;
-      volatility = 80;
-    } else if (timeframe === '7D') {
-      count = 56;
-      intervalMs = 3 * 3600 * 1000;
-      volatility = 200;
-    } else if (timeframe === '30D') {
-      count = 60;
-      intervalMs = 12 * 3600 * 1000;
-      volatility = 450;
-    } else if (timeframe === '1Y') {
-      count = 52;
-      intervalMs = 7 * 24 * 3600 * 1000;
-      volatility = 950;
-    }
-
-    let currentVal = this.basePrice;
-    for (let i = count - 1; i >= 0; i--) {
-      const time = new Date(now - i * intervalMs);
-      const delta = (Math.random() - 0.49) * volatility;
-      const open = Math.round(currentVal);
-      const close = Math.round(currentVal + delta);
-      const high = Math.round(Math.max(open, close) + Math.random() * (volatility * 0.45));
-      const low = Math.round(Math.min(open, close) - Math.random() * (volatility * 0.45));
-      currentVal = close;
-      points.push({
-        time: time,
-        open: open,
-        high: high,
-        low: low,
-        close: close,
-        price: close,
-        volume: Math.round(Math.random() * 80000 + 15000),
-        label: this.formatTimeLabel(time, timeframe)
-      });
-    }
-
-    return points;
-  }
-
   formatTimeLabel(date, timeframe) {
     if (timeframe === '1H' || timeframe === '24H') {
       return date.toLocaleTimeString('en-US', { hour12: false, hour: '2-digit', minute: '2-digit' });
@@ -1053,26 +986,30 @@ class DataAdapter {
 
       const wallexRate = this.rates.get('wallex');
       if (wallexRate) {
-        const dir = (bid || last) > wallexRate.buyPrice ? 'up' : ((bid || last) < wallexRate.buyPrice ? 'down' : 'none');
-        wallexRate.buyPrice = bid || last;
-        wallexRate.sellPrice = ask || last;
-        wallexRate.change24h = Number(Number(ch24h).toFixed(2));
-        wallexRate.vol24h = vol;
-        wallexRate.high24h = high;
-        wallexRate.low24h = low;
-        wallexRate.lastUpdate = new Date();
-        wallexRate.lastDirection = dir;
+        const newBuy = bid || last;
+        const newSell = ask || last;
+        if (newBuy > 0 && (newBuy !== wallexRate.buyPrice || newSell !== wallexRate.sellPrice)) {
+          const dir = newBuy > wallexRate.buyPrice ? 'up' : (newBuy < wallexRate.buyPrice ? 'down' : 'none');
+          wallexRate.buyPrice = newBuy;
+          wallexRate.sellPrice = newSell;
+          wallexRate.change24h = Number(Number(ch24h).toFixed(2));
+          wallexRate.vol24h = vol;
+          wallexRate.high24h = high;
+          wallexRate.low24h = low;
+          wallexRate.lastUpdate = new Date();
+          wallexRate.lastDirection = dir;
 
-        this.notify({
-          type: 'tick',
-          exchangeId: 'wallex',
-          direction: dir,
-          rate: wallexRate,
-          stats: this.getAggregateStats()
-        });
+          this.notify({
+            type: 'tick',
+            exchangeId: 'wallex',
+            direction: dir,
+            rate: wallexRate,
+            stats: this.getAggregateStats()
+          });
+        }
       }
     } catch (err) {
-      // Quietly continue with simulation fallback if proxy is unreachable
+      // Quietly ignore
     }
   }
 
@@ -1100,23 +1037,25 @@ class DataAdapter {
       if (nobitexRate && (buyPrice > 0 || lastPrice > 0)) {
         const activeBuy = buyPrice || lastPrice;
         const activeSell = sellPrice || lastPrice;
-        const dir = activeBuy > nobitexRate.buyPrice ? 'up' : (activeBuy < nobitexRate.buyPrice ? 'down' : 'none');
-        nobitexRate.buyPrice = activeBuy;
-        nobitexRate.sellPrice = activeSell;
-        nobitexRate.change24h = Number(Number(change24h).toFixed(2));
-        nobitexRate.vol24h = vol24h;
-        nobitexRate.high24h = high24h;
-        nobitexRate.low24h = low24h;
-        nobitexRate.lastUpdate = new Date();
-        nobitexRate.lastDirection = dir;
+        if (activeBuy !== nobitexRate.buyPrice || activeSell !== nobitexRate.sellPrice) {
+          const dir = activeBuy > nobitexRate.buyPrice ? 'up' : (activeBuy < nobitexRate.buyPrice ? 'down' : 'none');
+          nobitexRate.buyPrice = activeBuy;
+          nobitexRate.sellPrice = activeSell;
+          nobitexRate.change24h = Number(Number(change24h).toFixed(2));
+          nobitexRate.vol24h = vol24h;
+          nobitexRate.high24h = high24h;
+          nobitexRate.low24h = low24h;
+          nobitexRate.lastUpdate = new Date();
+          nobitexRate.lastDirection = dir;
 
-        this.notify({
-          type: 'tick',
-          exchangeId: 'nobitex',
-          direction: dir,
-          rate: nobitexRate,
-          stats: this.getAggregateStats()
-        });
+          this.notify({
+            type: 'tick',
+            exchangeId: 'nobitex',
+            direction: dir,
+            rate: nobitexRate,
+            stats: this.getAggregateStats()
+          });
+        }
       }
     } catch (err) {
       console.warn('Nobitex price fetch error:', err.message);
@@ -1201,24 +1140,26 @@ class DataAdapter {
       const volToman = Math.round(volRial / 10);
 
       const bpRate = this.rates.get('bitpin');
-      if (bpRate) {
-        const dir = price > bpRate.buyPrice ? 'up' : (price < bpRate.buyPrice ? 'down' : 'none');
-        bpRate.buyPrice = price;
-        bpRate.sellPrice = price;
-        bpRate.change24h = Number(Number(ch24h).toFixed(2));
-        bpRate.high24h = high;
-        bpRate.low24h = low;
-        bpRate.vol24h = volToman;
-        bpRate.lastUpdate = new Date();
-        bpRate.lastDirection = dir;
+      if (bpRate && price > 0) {
+        if (price !== bpRate.buyPrice) {
+          const dir = price > bpRate.buyPrice ? 'up' : 'down';
+          bpRate.buyPrice = price;
+          bpRate.sellPrice = price;
+          bpRate.change24h = Number(Number(ch24h).toFixed(2));
+          bpRate.high24h = high;
+          bpRate.low24h = low;
+          bpRate.vol24h = volToman;
+          bpRate.lastUpdate = new Date();
+          bpRate.lastDirection = dir;
 
-        this.notify({
-          type: 'tick',
-          exchangeId: 'bitpin',
-          direction: dir,
-          rate: bpRate,
-          stats: this.getAggregateStats()
-        });
+          this.notify({
+            type: 'tick',
+            exchangeId: 'bitpin',
+            direction: dir,
+            rate: bpRate,
+            stats: this.getAggregateStats()
+          });
+        }
       }
     } catch (err) {
       // Ignored
@@ -1253,46 +1194,6 @@ class DataAdapter {
     } catch (err) {
       // Ignored
     }
-  }
-
-  // Live simulation for exchanges (keeps the dashboard dynamic)
-  startLiveSimulation() {
-    if (this.tickTimer) clearInterval(this.tickTimer);
-
-    this.tickTimer = setInterval(() => {
-      // Pick an exchange (skipping active streaming ones: Wallex, Nobitex & Bitpin)
-      const nonStream = EXCHANGES_DEF.filter(e => e.id !== 'wallex' && e.id !== 'nobitex' && e.id !== 'bitpin');
-      const randomEx = nonStream[Math.floor(Math.random() * nonStream.length)];
-      const current = this.rates.get(randomEx.id);
-      if (!current) return;
-
-      const delta = (Math.random() > 0.5 ? 1 : -1) * (Math.floor(Math.random() * 4) + 1) * 10;
-      const newBuy = Math.max(240000, current.buyPrice + delta);
-      const newSell = Math.max(239900, current.sellPrice + delta);
-      const direction = delta > 0 ? 'up' : 'down';
-
-      current.buyPrice = newBuy;
-      current.sellPrice = newSell;
-      current.spread = newBuy - newSell;
-      current.lastUpdate = new Date();
-      current.lastDirection = direction;
-
-      if (current.sparkline) {
-        current.sparkline.push(newBuy);
-        if (current.sparkline.length > 25) current.sparkline.shift();
-      }
-
-      if (newBuy > current.high24h) current.high24h = newBuy;
-      if (newBuy < current.low24h) current.low24h = newBuy;
-
-      this.notify({
-        type: 'tick',
-        exchangeId: randomEx.id,
-        direction: direction,
-        rate: current,
-        stats: this.getAggregateStats()
-      });
-    }, 2800);
   }
 }
 

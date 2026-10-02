@@ -811,7 +811,24 @@ async function main() {
       if (wallexSpark) item.sparkline = wallexSpark;
     } else if (def.id === 'nobitex' && nobitexRates) {
       item = { ...item, ...nobitexRates };
-      if (nobitexSpark) item.sparkline = nobitexSpark;
+      if (nobitexSpark && nobitexSpark.length > 0) {
+        item.sparkline = nobitexSpark;
+      } else {
+        let existingSpark = (existing.rates && existing.rates.nobitex && Array.isArray(existing.rates.nobitex.sparkline)) ? existing.rates.nobitex.sparkline : [];
+        if (existingSpark.length < 2) {
+          const open24h = Math.round(Number(nobitexRates.buyPrice) / (1 + (nobitexRates.change24h || 0) / 100));
+          existingSpark = [
+            open24h,
+            nobitexRates.low24h,
+            nobitexRates.high24h,
+            nobitexRates.buyPrice
+          ];
+        } else {
+          existingSpark.push(nobitexRates.buyPrice);
+          if (existingSpark.length > 24) existingSpark.shift();
+        }
+        item.sparkline = existingSpark;
+      }
     } else if (def.id === 'abantether' && abantetherRates) {
       item = { ...item, ...abantetherRates };
       if (abantetherSpark) item.sparkline = abantetherSpark;

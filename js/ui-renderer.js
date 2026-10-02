@@ -308,14 +308,16 @@ class UIRenderer {
       buyNumEl.textContent = window.dataAdapter.formatPriceNum(event.rate.buyPrice);
       sellNumEl.textContent = window.dataAdapter.formatPriceNum(event.rate.sellPrice);
 
-      const flashClass = event.direction === 'up' ? 'tick-flash-up' : 'tick-flash-down';
-      buyNumEl.classList.remove('tick-flash-up', 'tick-flash-down');
-      sellNumEl.classList.remove('tick-flash-up', 'tick-flash-down');
+      if (event.direction === 'up' || event.direction === 'down') {
+        const flashClass = event.direction === 'up' ? 'tick-flash-up' : 'tick-flash-down';
+        buyNumEl.classList.remove('tick-flash-up', 'tick-flash-down');
+        sellNumEl.classList.remove('tick-flash-up', 'tick-flash-down');
 
-      void buyNumEl.offsetWidth; // Reflow
+        void buyNumEl.offsetWidth; // Reflow
 
-      buyNumEl.classList.add(flashClass);
-      sellNumEl.classList.add(flashClass);
+        buyNumEl.classList.add(flashClass);
+        sellNumEl.classList.add(flashClass);
+      }
     }
 
     // Update 24h high/low range and change badge in the row
