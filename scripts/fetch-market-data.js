@@ -349,49 +349,58 @@ function parseCandlesFromUdf(json, { divisor = 1, timeframe = '24H' } = {}) {
   if (!json || json.s !== 'ok' || !Array.isArray(json.t) || !Array.isArray(json.c) || json.t.length === 0) {
     return null;
   }
-  const raw = [];
+  const timeMap = new Map();
   for (let i = 0; i < json.t.length; i++) {
+    const rawTime = json.t[i] * 1000;
+    if (!rawTime || isNaN(rawTime)) continue;
     const o = Math.round(Number(json.o ? json.o[i] : json.c[i]) / divisor);
     const h = Math.round(Number(json.h ? json.h[i] : json.c[i]) / divisor);
     const l = Math.round(Number(json.l ? json.l[i] : json.c[i]) / divisor);
     const c = Math.round(Number(json.c[i]) / divisor);
-    raw.push({
-      time: json.t[i] * 1000,
-      open: o,
-      high: Math.max(h, o, c),
-      low: Math.min(l, o, c),
-      close: c,
-      price: c,
-      volume: Math.round(Number(json.v ? json.v[i] : 0))
-    });
-  }
-  const maxBars = timeframe === '1Y' ? 400 : 140;
-  return consolidateCandles(raw, maxBars);
-}
-
-function parseCandlesFromArray(arr, { divisor = 1, timeframe = '24H', timeInMs = false } = {}) {
-  if (!Array.isArray(arr) || arr.length === 0) return null;
-  const raw = [];
-  for (let i = 0; i < arr.length; i++) {
-    const item = arr[i];
-    let rawTime = item.time;
-    if (typeof rawTime === 'string') rawTime = new Date(rawTime).getTime();
-    else if (typeof rawTime === 'number' && !timeInMs && rawTime < 1e11) rawTime *= 1000;
-    const o = Math.round(Number(item.open != null ? item.open : item.close) / divisor);
-    const h = Math.round(Number(item.high != null ? item.high : item.close) / divisor);
-    const l = Math.round(Number(item.low != null ? item.low : item.close) / divisor);
-    const c = Math.round(Number(item.close) / divisor);
-    raw.push({
+    const v = Math.round(Number(json.v ? json.v[i] : 0));
+    timeMap.set(rawTime, {
       time: rawTime,
       open: o,
       high: Math.max(h, o, c),
       low: Math.min(l, o, c),
       close: c,
       price: c,
-      volume: Math.round(Number(item.volume || 0))
+      volume: v
     });
   }
-  const maxBars = timeframe === '1Y' ? 400 : 140;
+  const raw = Array.from(timeMap.values()).sort((a, b) => a.time - b.time);
+  const maxBars = timeframe === '1Y' ? 400 : (timeframe === '24H' ? 96 : 140);
+  return consolidateCandles(raw, maxBars);
+}
+
+function parseCandlesFromArray(arr, { divisor = 1, timeframe = '24H', timeInMs = false } = {}) {
+  if (!Array.isArray(arr) || arr.length === 0) return null;
+  const timeMap = new Map();
+  for (let i = 0; i < arr.length; i++) {
+    const item = arr[i];
+    let rawTime = item.time;
+    if (typeof rawTime === 'string') rawTime = new Date(rawTime).getTime();
+    else if (typeof rawTime === 'number' && !timeInMs && rawTime < 1e11) rawTime *= 1000;
+    if (!rawTime || isNaN(rawTime)) continue;
+
+    const o = Math.round(Number(item.open != null ? item.open : item.close) / divisor);
+    const h = Math.round(Number(item.high != null ? item.high : item.close) / divisor);
+    const l = Math.round(Number(item.low != null ? item.low : item.close) / divisor);
+    const c = Math.round(Number(item.close) / divisor);
+    const v = Math.round(Number(item.volume || 0));
+
+    timeMap.set(rawTime, {
+      time: rawTime,
+      open: o,
+      high: Math.max(h, o, c),
+      low: Math.min(l, o, c),
+      close: c,
+      price: c,
+      volume: v
+    });
+  }
+  const raw = Array.from(timeMap.values()).sort((a, b) => a.time - b.time);
+  const maxBars = timeframe === '1Y' ? 400 : (timeframe === '24H' ? 96 : 140);
   return consolidateCandles(raw, maxBars);
 }
 

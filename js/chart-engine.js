@@ -318,8 +318,19 @@ class ChartEngine {
     const chartW = w - padding.left - padding.right;
     const chartH = h - padding.top - padding.bottom;
 
+    // Deduplicate points by timestamp to prevent duplicate stacking
+    const uniqueMap = new Map();
+    (this.dataPoints || []).forEach(p => {
+      const t = p.time instanceof Date ? p.time.getTime() : Number(p.time);
+      if (!isNaN(t)) uniqueMap.set(t, p);
+    });
+    let renderPoints = Array.from(uniqueMap.values()).sort((a, b) => {
+      const ta = a.time instanceof Date ? a.time.getTime() : Number(a.time);
+      const tb = b.time instanceof Date ? b.time.getTime() : Number(b.time);
+      return ta - tb;
+    });
+
     // Consolidate bars if they exceed the canvas pixel density (avoids candle overlapping on mobile)
-    let renderPoints = this.dataPoints;
     if (this.chartType === 'candlestick') {
       const minSlotW = 3.2;
       const maxBars = Math.max(12, Math.floor(chartW / minSlotW));
@@ -413,18 +424,8 @@ class ChartEngine {
     // 1. CANDLESTICK CHART MODE (Default)
     // =========================================================================
     if (this.chartType === 'candlestick') {
-      let minIntervalMs = Infinity;
-      for (let i = 1; i < renderPoints.length; i++) {
-        const t1 = renderPoints[i - 1].time instanceof Date ? renderPoints[i - 1].time.getTime() : Number(renderPoints[i - 1].time);
-        const t2 = renderPoints[i].time instanceof Date ? renderPoints[i].time.getTime() : Number(renderPoints[i].time);
-        const diff = t2 - t1;
-        if (diff > 0 && diff < minIntervalMs) minIntervalMs = diff;
-      }
-      if (!Number.isFinite(minIntervalMs) || minIntervalMs <= 0) {
-        minIntervalMs = tfConfig.defaultIntervalMs;
-      }
-
-      const slotW = Math.max(2.5, (minIntervalMs / durationMs) * chartW);
+      const expectedSlots = Math.max(renderPoints.length, Math.round(durationMs / tfConfig.defaultIntervalMs));
+      const slotW = chartW / expectedSlots;
       const candleW = Math.max(1.5, Math.min(16, Math.floor(slotW * 0.72)));
       const maxVol = Math.max(...renderPoints.map(p => p.volume || 1), 1);
       const volAreaHeight = chartH * 0.16;
