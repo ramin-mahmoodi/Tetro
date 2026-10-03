@@ -23,37 +23,6 @@ const DATA_DATE_FORMATTERS = {
   enYearMonth: new Intl.DateTimeFormat('en-US', { year: 'numeric', month: 'short', day: 'numeric', timeZone: 'Asia/Tehran' })
 };
 
-const UDF_CONFIGS = {
-  wallex: {
-    divisor: 1,
-    url: (res, from, to) => `https://api.wallex.ir/v1/udf/history?symbol=USDTTMN&resolution=${res}&from=${from}&to=${to}`
-  },
-  nobitex: {
-    divisor: 1,
-    url: (res, from, to, countback) => `https://apiv2.nobitex.ir/market/udf/history?symbol=USDTIRT&resolution=${res}&from=${from}&to=${to}&countback=${countback}`
-  },
-  abantether: {
-    divisor: 1,
-    url: (res, from, to, countback) => `https://api.abantether.com/otc_reporting/tradingview/history?symbol=USDT%2FIRT&resolution=${res}&from=${from}&to=${to}&countback=${countback}`
-  },
-  ramzinex: {
-    divisor: 10,
-    url: (res, from, to, countback) => `https://publicapi.ramzinex.ir/exchange/api/v1.0/exchange/chart/tv/v2.0/history?symbol=USDTIRR&resolution=${res}&from=${from}&to=${to}&countback=${countback}`
-  },
-  tabdeal: {
-    divisor: 1,
-    url: (res, from, to, countback) => `https://api-web.tabdeal.org/r/plots/history/?first_currency_symbol=USDT&second_currency_symbol=IRT&from=${from}&to=${to}&resolution=${res}&countback=${countback}&symbol=USDT_IRT`
-  },
-  exir: {
-    divisor: 1,
-    url: (res, from, to) => `https://api.exir.io/v2/chart?symbol=usdt-irt&resolution=${res}&from=${from}&to=${to}`
-  },
-  bitpin: {
-    divisor: 1,
-    url: (res, from, to) => `https://api.bitpin.ir/v1/mkt/tv/get_bars/?symbol=USDT_IRT&res=${res}&from=${from}&to=${to}`
-  }
-};
-
 class DataAdapter {
   constructor() {
     const savedCurrency = (typeof localStorage !== 'undefined' && localStorage.getItem('tetro_currency')) || 'TOMAN';
@@ -351,147 +320,15 @@ class DataAdapter {
     this.notify({ type: 'currency_change', currency: this.currentCurrency });
   }
 
-  consolidateCandles(rawCandles, maxBars = 140) {
-    if (!Array.isArray(rawCandles) || rawCandles.length === 0) return [];
-    if (rawCandles.length <= maxBars) return rawCandles;
-    const bucketSize = Math.ceil(rawCandles.length / maxBars);
-    const result = [];
-    for (let i = 0; i < rawCandles.length; i += bucketSize) {
-      const bucket = rawCandles.slice(i, i + bucketSize);
-      if (bucket.length === 0) continue;
-      const first = bucket[0];
-      const last = bucket[bucket.length - 1];
-      const high = Math.max(...bucket.map(c => c.high));
-      const low = Math.min(...bucket.map(c => c.low));
-      const volume = bucket.reduce((sum, c) => sum + (c.volume || 0), 0);
-      result.push({
-        time: last.time,
-        open: first.open,
-        high: Math.max(high, first.open, last.close),
-        low: Math.min(low, first.open, last.close),
-        close: last.close,
-        price: last.close,
-        volume: volume,
-        label: last.label
-      });
-    }
-    return result;
-  }
-
-  parseCandleBars(data, { divisor = 1, timeframe = '24H' } = {}) {
-    const raw = [];
-    if (data && data.s === 'ok' && Array.isArray(data.t) && Array.isArray(data.c)) {
-      // Standard TradingView UDF format { s: 'ok', t, o, h, l, c, v }
-      for (let i = 0; i < data.t.length; i++) {
-        const d = new Date(data.t[i] * 1000);
-        const o = Math.round(Number(data.o ? data.o[i] : data.c[i]) / divisor);
-        const h = Math.round(Number(data.h ? data.h[i] : data.c[i]) / divisor);
-        const l = Math.round(Number(data.l ? data.l[i] : data.c[i]) / divisor);
-        const c = Math.round(Number(data.c[i]) / divisor);
-        const v = Math.round(Number(data.v ? data.v[i] : 0));
-        raw.push({
-          time: d,
-          open: o,
-          high: Math.max(h, o, c),
-          low: Math.min(l, o, c),
-          close: c,
-          price: c,
-          volume: v,
-          label: this.formatTimeLabel(d, timeframe)
-        });
-      }
-    } else if (Array.isArray(data)) {
-      // Array of candle objects [{ time, open, high, low, close, volume }]
-      for (let i = 0; i < data.length; i++) {
-        const item = data[i];
-        const rawTime = typeof item.time === 'number' ? (item.time > 1e11 ? item.time : item.time * 1000) : item.time;
-        const d = new Date(rawTime);
-        const o = Math.round(Number(item.open != null ? item.open : item.close) / divisor);
-        const h = Math.round(Number(item.high != null ? item.high : item.close) / divisor);
-        const l = Math.round(Number(item.low != null ? item.low : item.close) / divisor);
-        const c = Math.round(Number(item.close) / divisor);
-        const v = Math.round(Number(item.volume || 0));
-        raw.push({
-          time: d,
-          open: o,
-          high: Math.max(h, o, c),
-          low: Math.min(l, o, c),
-          close: c,
-          price: c,
-          volume: v,
-          label: this.formatTimeLabel(d, timeframe)
-        });
-      }
-    }
-    return raw;
-  }
-
-  // Live historical candle data fetcher (table-driven, clean & DRY)
   async getHistory(timeframe = '24H', sourceId = 'aggregate') {
-    const cacheKey = `${sourceId}_${timeframe}`;
-    if (this.historyCache.has(cacheKey) && this.historyCache.get(cacheKey).length > 0) {
-      return this.historyCache.get(cacheKey);
-    }
+    const keys = sourceId === 'aggregate'
+      ? [`aggregate_${timeframe}`, timeframe]
+      : [`${sourceId}_${timeframe}`];
 
-    // 1. When source is Aggregate: return the true pre-computed market aggregate candles
-    if (sourceId === 'aggregate') {
-      const aggKey = `aggregate_${timeframe}`;
-      if (this.historyCache.has(aggKey) && this.historyCache.get(aggKey).length > 0) {
-        return this.historyCache.get(aggKey);
+    for (const key of keys) {
+      if (this.historyCache.has(key) && this.historyCache.get(key).length > 0) {
+        return this.historyCache.get(key);
       }
-      if (this.historyCache.has(timeframe) && this.historyCache.get(timeframe).length > 0) {
-        return this.historyCache.get(timeframe);
-      }
-    }
-
-    const endpointDef = UDF_CONFIGS[sourceId];
-    const isLocal = typeof window !== 'undefined' && (window.location.hostname === 'localhost' || window.location.hostname === '127.0.0.1');
-
-    if (endpointDef && isLocal) {
-      try {
-        const tfMap = {
-          '1H': { resolution: '1', sec: 3600, countback: 60 },
-          '24H': { resolution: '15', sec: 86400, countback: 96 },
-          '7D': { resolution: '60', sec: 7 * 86400, countback: 168 },
-          '30D': { resolution: '240', sec: 30 * 86400, countback: 180 },
-          '1Y': { resolution: '1D', sec: 365 * 86400, countback: 365 }
-        };
-        const cfg = tfMap[timeframe] || { resolution: '60', sec: 86400, countback: 100 };
-        const now = Math.floor(Date.now() / 1000);
-        const from = now - cfg.sec;
-        const targetUrl = endpointDef.url(cfg.resolution, from, now, cfg.countback);
-        const proxyUrl = this.getProxyUrl(targetUrl);
-        if (proxyUrl) {
-          const controller = new AbortController();
-          const timeout = setTimeout(() => controller.abort(), 2500);
-          const res = await fetch(proxyUrl, { signal: controller.signal });
-          clearTimeout(timeout);
-          if (res.ok) {
-            const data = await res.json();
-            const raw = this.parseCandleBars(data, { divisor: endpointDef.divisor, timeframe });
-            if (raw.length > 0) {
-              const maxBars = timeframe === '1Y' ? 400 : 140;
-              const points = this.consolidateCandles(raw, maxBars);
-              this.historyCache.set(cacheKey, points);
-              if (sourceId === 'wallex') {
-                this.historyCache.set(`wallex_${timeframe}`, points);
-              }
-              return points;
-            }
-          }
-        }
-      } catch (err) {
-        console.warn(`[History] Fetch error for ${sourceId}:`, err.message);
-      }
-    }
-
-    // 2. Secondary fallback from snapshot cache
-    const fallbackKey = sourceId === 'wallex' ? timeframe : `${sourceId}_${timeframe}`;
-    if (this.historyCache.has(fallbackKey) && this.historyCache.get(fallbackKey).length > 0) {
-      return this.historyCache.get(fallbackKey);
-    }
-    if (this.historyCache.has(cacheKey) && this.historyCache.get(cacheKey).length > 0) {
-      return this.historyCache.get(cacheKey);
     }
 
     const emptyDefault = [];

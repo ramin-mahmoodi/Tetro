@@ -405,40 +405,6 @@ async function fetchWallexCandles(timeframe) {
   return parseCandlesFromUdf(json, { divisor: 1, timeframe });
 }
 
-
-async function fetchWallexSparkline() {
-  const now = Math.floor(Date.now() / 1000);
-  const from = now - 86400;
-  const url = `https://api.wallex.ir/v1/udf/history?symbol=USDTTMN&resolution=60&from=${from}&to=${now}`;
-  const json = await safeFetchJson(url);
-  if (json && json.s === 'ok' && Array.isArray(json.c) && json.c.length > 0) {
-    return json.c.map(p => Math.round(Number(p)));
-  }
-  return null;
-}
-
-async function fetchNobitexSparkline() {
-  const now = Math.floor(Date.now() / 1000);
-  const from = now - 86400;
-  const url = `https://apiv2.nobitex.ir/market/udf/history?symbol=USDTIRT&resolution=60&from=${from}&to=${now}`;
-  const json = await safeFetchJson(url);
-  if (json && json.s === 'ok' && Array.isArray(json.c) && json.c.length > 0) {
-    return json.c.map(p => Math.round(Number(p) / 10));
-  }
-  return null;
-}
-
-async function fetchAbanTetherSparkline() {
-  const now = Math.floor(Date.now() / 1000);
-  const from = now - 86400;
-  const url = `https://api.abantether.com/otc_reporting/tradingview/history?symbol=USDT%2FIRT&resolution=60&from=${from}&to=${now}&countback=24`;
-  const json = await safeFetchJson(url);
-  if (json && json.s === 'ok' && Array.isArray(json.c) && json.c.length > 0) {
-    return json.c.map(p => Math.round(Number(p)));
-  }
-  return null;
-}
-
 async function fetchAbanTetherCandles(timeframe) {
   const cfg = COMMON_TF_MAP[timeframe];
   if (!cfg) return null;
@@ -447,17 +413,6 @@ async function fetchAbanTetherCandles(timeframe) {
   const url = `https://api.abantether.com/otc_reporting/tradingview/history?symbol=USDT%2FIRT&resolution=${cfg.resolution}&from=${from}&to=${now}&countback=${cfg.countback}`;
   const json = await safeFetchJson(url);
   return parseCandlesFromUdf(json, { divisor: 1, timeframe });
-}
-
-async function fetchRamzinexSparkline() {
-  const now = Math.floor(Date.now() / 1000);
-  const from = now - 86400;
-  const url = `https://publicapi.ramzinex.ir/exchange/api/v1.0/exchange/chart/tv/v2.0/history?symbol=USDTIRR&resolution=60&from=${from}&to=${now}&countback=24`;
-  const json = await safeFetchJson(url);
-  if (json && json.s === 'ok' && Array.isArray(json.c) && json.c.length > 0) {
-    return json.c.map(p => Math.round(Number(p) / 10));
-  }
-  return null;
 }
 
 async function fetchRamzinexCandles(timeframe) {
@@ -513,15 +468,6 @@ async function fetchTetherLandPrices() {
       low24h: Math.min(low, sellPrice),
       vol24h: vol // In USDT
     };
-  }
-  return null;
-}
-
-async function fetchTetherLandSparkline() {
-  const json = await safeFetchJson('https://service.tetherland.com/api/v5/chart?rate=1&mode=h');
-  if (json && json.data && Array.isArray(json.data.prices) && json.data.prices.length > 0) {
-    const reversed = [...json.data.prices].reverse();
-    return reversed.map(p => Math.round(Number(p.price)));
   }
   return null;
 }
@@ -616,17 +562,6 @@ async function fetchTabdealPrices() {
   return null;
 }
 
-async function fetchTabdealSparkline() {
-  const now = Math.floor(Date.now() / 1000);
-  const from = now - 86400;
-  const url = `https://api-web.tabdeal.org/r/plots/history/?first_currency_symbol=USDT&second_currency_symbol=IRT&from=${from}&to=${now}&resolution=60&countback=24&symbol=USDT_IRT`;
-  const json = await safeFetchJson(url);
-  if (json && Array.isArray(json.data) && json.data.length > 0) {
-    return json.data.map(c => Math.round(Number(c.close)));
-  }
-  return null;
-}
-
 async function fetchTabdealCandles(timeframe) {
   const cfg = COMMON_TF_MAP[timeframe];
   if (!cfg) return null;
@@ -655,24 +590,6 @@ async function fetchExirPrices() {
       low24h: Math.min(low, price),
       vol24h: volUsdt
     };
-  }
-  return null;
-}
-
-async function fetchExirSparkline() {
-  const now = Math.floor(Date.now() / 1000);
-  const from = now - 86400;
-  const url = `https://api.exir.io/v2/chart?symbol=usdt-irt&resolution=60&from=${from}&to=${now}`;
-  const json = await safeFetchJson(url);
-  if (json && Array.isArray(json) && json.length > 0) {
-    const filtered = json.filter(c => {
-      const t = Math.floor(new Date(c.time).getTime() / 1000);
-      return t >= from && t <= now + 300;
-    });
-    if (filtered.length > 0) {
-      const closes = filtered.map(c => Math.round(Number(c.close)));
-      return closes.slice(-24);
-    }
   }
   return null;
 }
@@ -725,22 +642,6 @@ async function fetchBitpinPrices() {
   return null;
 }
 
-async function fetchBitpinSparkline() {
-  const now = Math.floor(Date.now() / 1000);
-  const from = now - 86400;
-  let url = `https://api.bitpin.ir/v1/mkt/tv/get_bars/?symbol=USDT_IRT&res=60&from=${from}&to=${now}`;
-  let json = await safeFetchJson(url, 10000);
-  if (!json || !Array.isArray(json)) {
-    url = `https://api.bitpin.org/v1/mkt/tv/get_bars/?symbol=USDT_IRT&res=60&from=${from}&to=${now}`;
-    json = await safeFetchJson(url, 10000);
-  }
-  if (Array.isArray(json) && json.length > 0) {
-    const closes = json.map(b => Math.round(Number(b.close)));
-    return closes.slice(-24);
-  }
-  return null;
-}
-
 async function fetchBitpinCandles(timeframe) {
   const cfg = COMMON_TF_MAP[timeframe];
   if (!cfg) return null;
@@ -769,8 +670,7 @@ async function main() {
   }
 
   const [
-    wallexRates, nobitexRates, abantetherRates, ramzinexRates, tetherlandRates, tabdealRates, exirRates, bitpinRates,
-    wallexSpark, nobitexSpark, abantetherSpark, ramzinexSpark, tetherlandSpark, tabdealSpark, exirSpark, bitpinSpark
+    wallexRates, nobitexRates, abantetherRates, ramzinexRates, tetherlandRates, tabdealRates, exirRates, bitpinRates
   ] = await Promise.all([
     fetchWallexPrices(),
     fetchNobitexPrices(),
@@ -779,15 +679,7 @@ async function main() {
     fetchTetherLandPrices(),
     fetchTabdealPrices(),
     fetchExirPrices(),
-    fetchBitpinPrices(),
-    fetchWallexSparkline(),
-    fetchNobitexSparkline(),
-    fetchAbanTetherSparkline(),
-    fetchRamzinexSparkline(),
-    fetchTetherLandSparkline(),
-    fetchTabdealSparkline(),
-    fetchExirSparkline(),
-    fetchBitpinSparkline()
+    fetchBitpinPrices()
   ]);
 
   const liveResults = {
@@ -801,31 +693,16 @@ async function main() {
     bitpin: bitpinRates
   };
 
-  const liveSparks = {
-    wallex: wallexSpark,
-    nobitex: nobitexSpark,
-    abantether: abantetherSpark,
-    ramzinex: ramzinexSpark,
-    tetherland: tetherlandSpark,
-    tabdeal: tabdealSpark,
-    exir: exirSpark,
-    bitpin: bitpinSpark
-  };
-
   const nowIso = new Date().toISOString();
   const rates = {};
 
   EXCHANGES_DEF.forEach(def => {
     const live = liveResults[def.id];
-    const spark = liveSparks[def.id];
     const existingRate = (existing.rates && existing.rates[def.id]) || null;
+    const initialSpark = (existingRate && existingRate.sparkline) || [];
 
     if (live && typeof live.buyPrice === 'number' && live.buyPrice > 0) {
       // 1. Live real data successfully received
-      const initialSpark = (spark && spark.length > 0)
-        ? spark
-        : ((existingRate && existingRate.sparkline) || []);
-
       rates[def.id] = {
         id: def.id,
         name: def.name,
