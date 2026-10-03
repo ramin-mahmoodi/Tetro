@@ -3,21 +3,23 @@
    Caches static assets for offline capability and instant loading
    ========================================================================== */
 
-const CACHE_NAME = 'tetro-pwa-v18';
+const CACHE_NAME = 'tetro-pwa-v19';
 const ASSETS_TO_CACHE = [
   './',
   './index.html',
   './manifest.json',
-  './css/tokens.css?v=4',
-  './css/themes.css?v=4',
-  './css/layout.css?v=4',
-  './css/components.css?v=4',
-  './css/chart.css?v=4',
+  './css/tokens.css?v=5',
+  './css/themes.css?v=5',
+  './css/layout.css?v=5',
+  './css/components.css?v=5',
+  './css/chart.css?v=5',
+  './css/phosphor.css',
+  './assets/fonts/Phosphor.woff2',
   './js/theme-engine.js',
-  './js/data-adapter.js?v=8',
-  './js/chart-engine.js?v=5',
-  './js/ui-renderer.js?v=8',
-  './js/app.js?v=8',
+  './js/data-adapter.js?v=9',
+  './js/chart-engine.js?v=6',
+  './js/ui-renderer.js?v=9',
+  './js/app.js?v=9',
   './assets/icon.svg',
   './assets/icons/icon-192.png',
   './assets/icons/icon-512.png',
@@ -57,16 +59,26 @@ self.addEventListener('fetch', (event) => {
 
   // Network-First for HTML navigation, market.json, and manifest.json
   if (event.request.mode === 'navigate' || url.pathname.endsWith('.html') || url.pathname.endsWith('market.json') || url.pathname.endsWith('manifest.json')) {
+    // Normalize cache key without query parameters (prevents unbounded memory leak on ?v=timestamp)
+    const cleanUrl = url.origin + url.pathname;
+    const cleanRequest = new Request(cleanUrl);
+
     event.respondWith(
       fetch(event.request)
         .then((response) => {
           if (response && response.status === 200) {
             const clone = response.clone();
-            caches.open(CACHE_NAME).then((cache) => cache.put(event.request, clone));
+            caches.open(CACHE_NAME).then((cache) => cache.put(cleanRequest, clone));
           }
           return response;
         })
-        .catch(() => caches.match(event.request))
+        .catch(() => {
+          return caches.match(cleanRequest).then((cached) => {
+            return cached || caches.match(event.request).then((fallback) => {
+              return fallback || new Response('Offline', { status: 503, statusText: 'Offline' });
+            });
+          });
+        })
     );
     return;
   }
@@ -84,9 +96,10 @@ self.addEventListener('fetch', (event) => {
         return networkResponse;
       }).catch((err) => {
         console.log('[SW] Network fetch failed, serving cached if available');
+        return null;
       });
 
-      return cachedResponse || fetchPromise;
+      return cachedResponse || fetchPromise.then(res => res || new Response('Offline', { status: 503, statusText: 'Offline' }));
     })
   );
 });

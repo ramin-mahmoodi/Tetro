@@ -5,9 +5,11 @@ on:
   push:
     branches:
       - main
+  schedule:
+    - cron: '*/10 * * * *'
 
 permissions:
-  contents: read
+  contents: write
   pages: write
   id-token: write
 
@@ -32,6 +34,17 @@ jobs:
 
       - name: Fetch and compile market data
         run: node scripts/fetch-market-data.js
+        env:
+          IRAN_PROXY: ${{ secrets.IRAN_PROXY }}
+          HTTPS_PROXY: ${{ secrets.HTTPS_PROXY }}
+
+      - name: Commit updated market data
+        if: github.event_name == 'schedule'
+        run: |
+          git config --global user.name "Ramin Mahmoodi"
+          git config --global user.email "ramin-mahmoodi@users.noreply.github.com"
+          git add data/market.json
+          git diff --quiet && git diff --staged --quiet || (git commit -m "Auto-sync market data [skip ci]" && git push)
 
       - name: Setup Pages
         uses: actions/configure-pages@v5

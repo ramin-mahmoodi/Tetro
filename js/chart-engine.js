@@ -148,14 +148,16 @@ class ChartEngine {
       faFullDate = new Intl.DateTimeFormat('fa-IR', {
         year: 'numeric',
         month: 'long',
-        day: 'numeric'
+        day: 'numeric',
+        timeZone: 'Asia/Tehran'
       }).format(d);
       faMonthDay = new Intl.DateTimeFormat('fa-IR', {
         month: 'short',
-        day: 'numeric'
+        day: 'numeric',
+        timeZone: 'Asia/Tehran'
       }).format(d);
     } catch (e) {
-      faFullDate = d.toLocaleDateString('fa-IR');
+      faFullDate = d.toLocaleDateString('fa-IR', { timeZone: 'Asia/Tehran' });
       faMonthDay = faFullDate;
     }
 
@@ -164,22 +166,35 @@ class ChartEngine {
       enShortDate = new Intl.DateTimeFormat('en-US', {
         year: 'numeric',
         month: 'short',
-        day: 'numeric'
+        day: 'numeric',
+        timeZone: 'Asia/Tehran'
       }).format(d);
     } catch (e) {
-      enShortDate = d.toLocaleDateString('en-US');
+      enShortDate = d.toLocaleDateString('en-US', { timeZone: 'Asia/Tehran' });
     }
 
-    const timeStr = d.toLocaleTimeString('en-US', { hour12: false, hour: '2-digit', minute: '2-digit' });
+    const timeStr = d.toLocaleTimeString('en-US', {
+      hour12: false,
+      hour: '2-digit',
+      minute: '2-digit',
+      timeZone: 'Asia/Tehran'
+    });
 
     if (tf === '1H') {
-      return `<b>${timeStr}</b> <span style="opacity:0.75; font-size:10px;">(امروز)</span>`;
+      let isToday = true;
+      try {
+        const nowTehran = new Intl.DateTimeFormat('en-CA', { timeZone: 'Asia/Tehran', year: 'numeric', month: '2-digit', day: '2-digit' }).format(new Date());
+        const candleTehran = new Intl.DateTimeFormat('en-CA', { timeZone: 'Asia/Tehran', year: 'numeric', month: '2-digit', day: '2-digit' }).format(d);
+        isToday = nowTehran === candleTehran;
+      } catch (e) {}
+      const dayLabel = isToday ? '(امروز)' : `(${faMonthDay})`;
+      return `<b>${timeStr}</b> <span style="opacity:0.75; font-size:10px;">${dayLabel}</span>`;
     }
     if (tf === '24H') {
       return `<b>${faMonthDay}</b> • <b>${timeStr}</b>`;
     }
     if (tf === '7D' || tf === '30D') {
-      const enDay = d.toLocaleDateString('en-US', { month: 'short', day: 'numeric' });
+      const enDay = d.toLocaleDateString('en-US', { month: 'short', day: 'numeric', timeZone: 'Asia/Tehran' });
       return `<b>${faMonthDay}</b> • <b>${timeStr}</b> <span style="opacity:0.65; font-size:10px;">(${enDay})</span>`;
     }
     if (tf === '1Y') {
@@ -193,23 +208,74 @@ class ChartEngine {
   formatAxisLabel(date, timeframe) {
     const d = date instanceof Date ? date : new Date(date);
     if (timeframe === '1H' || timeframe === '24H') {
-      return d.toLocaleTimeString('en-US', { hour12: false, hour: '2-digit', minute: '2-digit' });
+      return d.toLocaleTimeString('en-US', {
+        hour12: false,
+        hour: '2-digit',
+        minute: '2-digit',
+        timeZone: 'Asia/Tehran'
+      });
     }
     if (timeframe === '7D' || timeframe === '30D') {
       try {
-        return new Intl.DateTimeFormat('fa-IR', { month: 'short', day: 'numeric' }).format(d);
+        return new Intl.DateTimeFormat('fa-IR', {
+          month: 'short',
+          day: 'numeric',
+          timeZone: 'Asia/Tehran'
+        }).format(d);
       } catch (e) {
-        return d.toLocaleDateString('en-US', { month: 'short', day: 'numeric' });
+        return d.toLocaleDateString('en-US', {
+          month: 'short',
+          day: 'numeric',
+          timeZone: 'Asia/Tehran'
+        });
       }
     }
     if (timeframe === '1Y') {
       try {
-        return new Intl.DateTimeFormat('fa-IR', { year: 'numeric', month: 'short' }).format(d);
+        return new Intl.DateTimeFormat('fa-IR', {
+          year: 'numeric',
+          month: 'short',
+          timeZone: 'Asia/Tehran'
+        }).format(d);
       } catch (e) {
-        return d.toLocaleDateString('en-US', { year: 'numeric', month: 'short' });
+        return d.toLocaleDateString('en-US', {
+          year: 'numeric',
+          month: 'short',
+          timeZone: 'Asia/Tehran'
+        });
       }
     }
-    return d.toLocaleDateString('fa-IR');
+    return d.toLocaleDateString('fa-IR', { timeZone: 'Asia/Tehran' });
+  }
+
+  // Mathematically sound bar consolidation for tight viewports
+  consolidateBars(rawCandles, maxBars) {
+    if (!Array.isArray(rawCandles) || rawCandles.length <= maxBars) return rawCandles;
+    const bucketSize = Math.ceil(rawCandles.length / maxBars);
+    const result = [];
+    for (let i = 0; i < rawCandles.length; i += bucketSize) {
+      const bucket = rawCandles.slice(i, i + bucketSize);
+      if (!bucket.length) continue;
+      const first = bucket[0];
+      const last = bucket[bucket.length - 1];
+      const highs = bucket.map(c => (c.high != null ? c.high : (c.price || 0)));
+      const lows = bucket.map(c => (c.low != null ? c.low : (c.price || 0)));
+      const open = first.open != null ? first.open : first.price;
+      const close = last.close != null ? last.close : last.price;
+      const high = Math.max(...highs, open, close);
+      const low = Math.min(...lows, open, close);
+      const volume = bucket.reduce((sum, c) => sum + (c.volume || 0), 0);
+      result.push({
+        time: last.time,
+        open,
+        high,
+        low,
+        close,
+        price: close,
+        volume
+      });
+    }
+    return result;
   }
 
   render() {
@@ -260,13 +326,26 @@ class ChartEngine {
       return;
     }
 
-    const padding = { top: 25, right: 30, bottom: 35, left: 20 };
+    const isMobile = w < 500;
+    const padding = { top: 25, right: isMobile ? 48 : 58, bottom: 35, left: 14 };
     const chartW = w - padding.left - padding.right;
     const chartH = h - padding.top - padding.bottom;
 
-    // Determine scale range
-    const lows = this.dataPoints.map(p => (p.low != null ? p.low : p.price));
-    const highs = this.dataPoints.map(p => (p.high != null ? p.high : p.price));
+    // Consolidate bars if they exceed the canvas pixel density (avoids candle overlapping on mobile)
+    let renderPoints = this.dataPoints;
+    if (this.chartType === 'candlestick') {
+      const minSlotW = 3.2;
+      const maxBars = Math.max(12, Math.floor(chartW / minSlotW));
+      if (renderPoints.length > maxBars) {
+        renderPoints = this.consolidateBars(renderPoints, maxBars);
+      }
+    }
+    this.renderedPoints = renderPoints;
+    const count = renderPoints.length;
+
+    // Determine scale range from rendered points
+    const lows = renderPoints.map(p => (p.low != null ? p.low : p.price));
+    const highs = renderPoints.map(p => (p.high != null ? p.high : p.price));
     let minP = Math.min(...lows);
     let maxP = Math.max(...highs);
     const range = (maxP - minP) || 1;
@@ -274,24 +353,38 @@ class ChartEngine {
     maxP += range * 0.06;
     const adjustedRange = maxP - minP;
 
-    // Draw Subtle Horizontal Grid Lines
-    ctx.strokeStyle = bgInverse;
-    ctx.globalAlpha = 0.08;
-    ctx.lineWidth = 1;
+    // Draw Subtle Horizontal Grid Lines & Price (Y) Axis Labels
+    const gridLines = 4;
     ctx.setLineDash([4, 4]);
 
-    const gridLines = 4;
     for (let i = 0; i <= gridLines; i++) {
       const y = padding.top + (chartH / gridLines) * i;
+
+      // Grid line
+      ctx.strokeStyle = bgInverse;
+      ctx.globalAlpha = 0.08;
+      ctx.lineWidth = 1;
       ctx.beginPath();
       ctx.moveTo(padding.left, y);
       ctx.lineTo(padding.left + chartW, y);
       ctx.stroke();
+
+      // Price Label on Y Axis
+      const priceVal = Math.round(maxP - (i / gridLines) * adjustedRange);
+      ctx.save();
+      ctx.setLineDash([]);
+      ctx.fillStyle = bgInverse;
+      ctx.globalAlpha = 0.60;
+      ctx.font = '10px "Vazirmatn", sans-serif';
+      ctx.textAlign = 'right';
+      ctx.textBaseline = 'middle';
+      const formattedPrice = window.dataAdapter ? window.dataAdapter.formatPriceNum(priceVal) : priceVal.toLocaleString('en-US');
+      ctx.fillText(formattedPrice, w - 4, y);
+      ctx.restore();
     }
     ctx.setLineDash([]);
     ctx.globalAlpha = 1.0;
 
-    const count = this.dataPoints.length;
     const greenColor = '#10b981';
     const redColor = '#ef4444';
 
@@ -307,7 +400,7 @@ class ChartEngine {
 
       for (let i = 0; i < labelCount; i++) {
         const idx = Math.min(count - 1, Math.round(i * stepIdx));
-        const dp = this.dataPoints[idx];
+        const dp = renderPoints[idx];
         if (!dp) continue;
 
         let posX = padding.left + (idx / (count - 1)) * chartW;
@@ -335,14 +428,14 @@ class ChartEngine {
     // =========================================================================
     if (this.chartType === 'candlestick') {
       const slotW = chartW / count;
-      const candleW = Math.max(3, Math.min(16, slotW * 0.72));
-      const maxVol = Math.max(...this.dataPoints.map(p => p.volume || 1), 1);
+      const candleW = Math.max(1, Math.min(16, Math.floor(slotW * 0.72)));
+      const maxVol = Math.max(...renderPoints.map(p => p.volume || 1), 1);
       const volAreaHeight = chartH * 0.16;
       const volBaseline = padding.top + chartH;
 
       const points = [];
 
-      this.dataPoints.forEach((dp, i) => {
+      renderPoints.forEach((dp, i) => {
         const x = padding.left + i * slotW + slotW / 2;
         const open = dp.open != null ? dp.open : dp.price;
         const close = dp.close != null ? dp.close : dp.price;
@@ -447,47 +540,65 @@ class ChartEngine {
     // 2. LINE CHART MODE
     // =========================================================================
     } else {
-      const points = this.dataPoints.map((dp, i) => {
-        const x = padding.left + (i / (this.dataPoints.length - 1)) * chartW;
+      const points = renderPoints.map((dp, i) => {
+        const x = padding.left + (count > 1 ? (i / (count - 1)) * chartW : chartW / 2);
         const y = padding.top + chartH - ((dp.price - minP) / adjustedRange) * chartH;
         return { x, y, dp };
       });
 
-      // Gradient Area
-      const grad = ctx.createLinearGradient(0, padding.top, 0, padding.top + chartH);
-      grad.addColorStop(0, this.hexToRgba(accent1, 0.35));
-      grad.addColorStop(1, this.hexToRgba(accent1, 0.02));
+      if (count <= 1) {
+        if (points.length === 1) {
+          ctx.fillStyle = accent1;
+          ctx.beginPath();
+          ctx.arc(points[0].x, points[0].y, 5, 0, Math.PI * 2);
+          ctx.fill();
 
-      ctx.fillStyle = grad;
-      ctx.beginPath();
-      ctx.moveTo(points[0].x, padding.top + chartH);
-      points.forEach((p, idx) => {
-        if (idx === 0) {
-          ctx.lineTo(p.x, p.y);
-        } else {
-          const prev = points[idx - 1];
-          const cx = (prev.x + p.x) / 2;
-          ctx.bezierCurveTo(cx, prev.y, cx, p.y, p.x, p.y);
+          ctx.strokeStyle = accent1;
+          ctx.lineWidth = 1.5;
+          ctx.setLineDash([4, 4]);
+          ctx.beginPath();
+          ctx.moveTo(padding.left, points[0].y);
+          ctx.lineTo(padding.left + chartW, points[0].y);
+          ctx.stroke();
+          ctx.setLineDash([]);
         }
-      });
-      ctx.lineTo(points[points.length - 1].x, padding.top + chartH);
-      ctx.closePath();
-      ctx.fill();
+      } else {
+        // Gradient Area
+        const grad = ctx.createLinearGradient(0, padding.top, 0, padding.top + chartH);
+        grad.addColorStop(0, this.hexToRgba(accent1, 0.35));
+        grad.addColorStop(1, this.hexToRgba(accent1, 0.02));
 
-      // Line
-      ctx.strokeStyle = accent1;
-      ctx.lineWidth = 3;
-      ctx.beginPath();
-      points.forEach((p, idx) => {
-        if (idx === 0) {
-          ctx.moveTo(p.x, p.y);
-        } else {
-          const prev = points[idx - 1];
-          const cx = (prev.x + p.x) / 2;
-          ctx.bezierCurveTo(cx, prev.y, cx, p.y, p.x, p.y);
-        }
-      });
-      ctx.stroke();
+        ctx.fillStyle = grad;
+        ctx.beginPath();
+        ctx.moveTo(points[0].x, padding.top + chartH);
+        points.forEach((p, idx) => {
+          if (idx === 0) {
+            ctx.lineTo(p.x, p.y);
+          } else {
+            const prev = points[idx - 1];
+            const cx = (prev.x + p.x) / 2;
+            ctx.bezierCurveTo(cx, prev.y, cx, p.y, p.x, p.y);
+          }
+        });
+        ctx.lineTo(points[points.length - 1].x, padding.top + chartH);
+        ctx.closePath();
+        ctx.fill();
+
+        // Line
+        ctx.strokeStyle = accent1;
+        ctx.lineWidth = 3;
+        ctx.beginPath();
+        points.forEach((p, idx) => {
+          if (idx === 0) {
+            ctx.moveTo(p.x, p.y);
+          } else {
+            const prev = points[idx - 1];
+            const cx = (prev.x + p.x) / 2;
+            ctx.bezierCurveTo(cx, prev.y, cx, p.y, p.x, p.y);
+          }
+        });
+        ctx.stroke();
+      }
 
       // Crosshair
       if (this.hoverIndex >= 0 && this.hoverIndex < points.length) {
@@ -554,11 +665,23 @@ class ChartEngine {
     const handleMove = (clientX) => {
       const rect = this.viewport.getBoundingClientRect();
       const x = clientX - rect.left;
-      const padding = { left: 20, right: 30 };
+      const isMobile = rect.width < 500;
+      const padding = { left: 14, right: isMobile ? 48 : 58 };
       const chartW = rect.width - padding.left - padding.right;
 
       const normX = Math.max(0, Math.min(chartW, x - padding.left));
-      const idx = Math.round((normX / chartW) * (this.dataPoints.length - 1));
+      const pointsList = this.renderedPoints || this.dataPoints;
+      const count = pointsList.length;
+      if (count <= 0) return;
+
+      let idx;
+      if (this.chartType === 'candlestick') {
+        const slotW = chartW / count;
+        idx = Math.floor(normX / slotW);
+        idx = Math.max(0, Math.min(count - 1, idx));
+      } else {
+        idx = count > 1 ? Math.round((normX / chartW) * (count - 1)) : 0;
+      }
       this.hoverIndex = idx;
       this.render();
     };

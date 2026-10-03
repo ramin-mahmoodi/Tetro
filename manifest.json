@@ -2,11 +2,11 @@
   "name": "TETRO",
   "short_name": "TETRO",
   "description": "ردیاب زنده و لحظه‌ای قیمت تتر در صرافی‌های برتر ایرانی",
-  "start_url": "/Tetro/",
-  "scope": "/Tetro/",
+  "start_url": "./",
+  "scope": "./",
   "display": "standalone",
-  "background_color": "#000000",
-  "theme_color": "#000000",
+  "background_color": "#222222",
+  "theme_color": "#222222",
   "orientation": "portrait",
   "icons": [
     {

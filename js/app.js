@@ -54,21 +54,25 @@ function setupMobileNav() {
 // Power User Shortcuts
 function setupKeyboardShortcuts() {
   document.addEventListener('keydown', (e) => {
-    // Ignore when typing inside inputs
-    if (e.target.tagName === 'INPUT' || e.target.tagName === 'SELECT') return;
+    // Ignore modifiers (Ctrl, Alt, Meta) so browser shortcuts (like Ctrl+T) aren't hijacked
+    if (e.ctrlKey || e.altKey || e.metaKey) return;
 
-    if (e.key === 't' || e.key === 'T') {
+    // Ignore when typing inside inputs, selects, textareas or contenteditable
+    if (e.target.tagName === 'INPUT' || e.target.tagName === 'SELECT' || e.target.tagName === 'TEXTAREA' || e.target.isContentEditable) return;
+
+    // Use e.code to work seamlessly across English, Persian, and all keyboard layouts
+    if (e.code === 'KeyT') {
       const modal = document.getElementById('theme-modal');
       if (modal) modal.classList.toggle('open');
-    } else if (e.key === 'Escape') {
+    } else if (e.code === 'Escape' || e.key === 'Escape') {
       const modal = document.getElementById('theme-modal');
       if (modal) modal.classList.remove('open');
-    } else if (e.key === '1') {
-      window.themeEngine.applyMode(1);
-    } else if (e.key === '2') {
-      window.themeEngine.applyMode(2);
-    } else if (e.key === '3') {
-      window.themeEngine.applyMode(3);
+    } else if (e.code === 'Digit1' || e.code === 'Numpad1') {
+      if (window.themeEngine) window.themeEngine.applyMode(1);
+    } else if (e.code === 'Digit2' || e.code === 'Numpad2') {
+      if (window.themeEngine) window.themeEngine.applyMode(2);
+    } else if (e.code === 'Digit3' || e.code === 'Numpad3') {
+      if (window.themeEngine) window.themeEngine.applyMode(3);
     }
   });
 }

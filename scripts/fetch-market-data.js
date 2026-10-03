@@ -6,18 +6,21 @@
 
 const fs = require('fs');
 const path = require('path');
+const http = require('http');
+const https = require('https');
+const { URL } = require('url');
 
 const DATA_FILE = path.join(__dirname, '..', 'data', 'market.json');
 
 const EXCHANGES_DEF = [
-  { id: 'nobitex', name: 'Nobitex', faName: 'نوبیتکس', baseBuy: 256350, baseSell: 256200, vol24h: 3820000, change24h: 0.55 },
-  { id: 'wallex', name: 'Wallex', faName: 'والکس', baseBuy: 256300, baseSell: 256250, vol24h: 2150000, change24h: 0.53 },
-  { id: 'ramzinex', name: 'Ramzinex', faName: 'رمزینکس', baseBuy: 256320, baseSell: 256190, vol24h: 1740000, change24h: 0.48 },
-  { id: 'abantether', name: 'AbanTether', faName: 'آبان‌تتر', baseBuy: 256420, baseSell: 256300, vol24h: 3100000, change24h: 0.65 },
-  { id: 'tetherland', name: 'TetherLand', faName: 'تترلند', baseBuy: 256380, baseSell: 256280, vol24h: 2950000, change24h: 0.58 },
-  { id: 'tabdeal', name: 'Tabdeal', faName: 'تبدیل', baseBuy: 256360, baseSell: 256210, vol24h: 1420000, change24h: 0.42 },
-  { id: 'exir', name: 'Exir', faName: 'اکسیر', baseBuy: 256400, baseSell: 256240, vol24h: 980000, change24h: 0.52 },
-  { id: 'bitpin', name: 'Bitpin', faName: 'بیت‌پین', baseBuy: 256350, baseSell: 256250, vol24h: 2400000, change24h: 0.50 }
+  { id: 'nobitex', name: 'Nobitex', faName: 'نوبیتکس' },
+  { id: 'wallex', name: 'Wallex', faName: 'والکس' },
+  { id: 'ramzinex', name: 'Ramzinex', faName: 'رمزینکس' },
+  { id: 'abantether', name: 'AbanTether', faName: 'آبان‌تتر' },
+  { id: 'tetherland', name: 'TetherLand', faName: 'تترلند' },
+  { id: 'tabdeal', name: 'Tabdeal', faName: 'تبدیل' },
+  { id: 'exir', name: 'Exir', faName: 'اکسیر' },
+  { id: 'bitpin', name: 'Bitpin', faName: 'بیت‌پین' }
 ];
 
 const headers = {
@@ -25,26 +28,115 @@ const headers = {
   'Accept': 'application/json, text/plain, */*'
 };
 
-async function safeFetchJson(url, timeoutMs = 8000) {
-  try {
-    const controller = new AbortController();
-    const timeout = setTimeout(() => controller.abort(), timeoutMs);
-    const res = await fetch(url, { headers, signal: controller.signal });
-    clearTimeout(timeout);
-    if (!res.ok) {
-      console.warn(`[WARN] ${url} returned HTTP ${res.status}`);
+async function safeFetchJson(targetUrl, timeoutMs = 8000) {
+  const proxyStr = process.env.IRAN_PROXY || process.env.HTTPS_PROXY || process.env.HTTP_PROXY;
+  if (!proxyStr) {
+    try {
+      const controller = new AbortController();
+      const timeout = setTimeout(() => controller.abort(), timeoutMs);
+      const res = await fetch(targetUrl, { headers, signal: controller.signal });
+      clearTimeout(timeout);
+      if (!res.ok) {
+        console.warn(`[WARN] ${targetUrl} returned HTTP ${res.status}`);
+        return null;
+      }
+      const text = await res.text();
+      if (text.trim().startsWith('<')) {
+        console.warn(`[WARN] ${targetUrl} returned HTML instead of JSON`);
+        return null;
+      }
+      return JSON.parse(text);
+    } catch (err) {
+      console.warn(`[ERROR] Fetch failed for ${targetUrl}:`, err.message);
       return null;
     }
-    const text = await res.text();
-    if (text.trim().startsWith('<')) {
-      console.warn(`[WARN] ${url} returned HTML instead of JSON`);
-      return null;
-    }
-    return JSON.parse(text);
-  } catch (err) {
-    console.warn(`[ERROR] Fetch failed for ${url}:`, err.message);
-    return null;
   }
+
+  // CONNECT proxy tunnel support for environments requiring proxies (e.g. GitHub Actions runner geo-blocking)
+  return new Promise((resolve) => {
+    try {
+      const target = new URL(targetUrl);
+      const proxy = new URL(proxyStr);
+      const isHttps = target.protocol === 'https:';
+      const targetPort = target.port || (isHttps ? 443 : 80);
+
+      const timer = setTimeout(() => {
+        console.warn(`[TIMEOUT] Proxy fetch timed out for ${targetUrl}`);
+        resolve(null);
+      }, timeoutMs);
+
+      const connectReq = http.request({
+        host: proxy.hostname,
+        port: proxy.port || 8080,
+        method: 'CONNECT',
+        path: `${target.hostname}:${targetPort}`,
+        headers: {
+          Host: `${target.hostname}:${targetPort}`
+        }
+      });
+
+      connectReq.on('connect', (res, socket) => {
+        if (res.statusCode !== 200) {
+          clearTimeout(timer);
+          socket.destroy();
+          console.warn(`[WARN] Proxy CONNECT to ${target.hostname} failed with status ${res.statusCode}`);
+          return resolve(null);
+        }
+
+        const agent = isHttps ? new https.Agent({ socket }) : new http.Agent({ socket });
+        const reqLib = isHttps ? https : http;
+
+        const req = reqLib.request({
+          host: target.hostname,
+          port: targetPort,
+          path: target.pathname + target.search,
+          method: 'GET',
+          agent: agent,
+          headers: {
+            ...headers,
+            Host: target.hostname
+          }
+        }, (resp) => {
+          let body = '';
+          resp.on('data', chunk => { body += chunk; });
+          resp.on('end', () => {
+            clearTimeout(timer);
+            try {
+              if (resp.statusCode >= 200 && resp.statusCode < 300) {
+                if (!body.trim().startsWith('<')) {
+                  return resolve(JSON.parse(body));
+                }
+              }
+              console.warn(`[WARN] Proxy GET ${targetUrl} returned HTTP ${resp.statusCode}`);
+              resolve(null);
+            } catch (e) {
+              console.warn(`[WARN] Proxy JSON parse error for ${targetUrl}:`, e.message);
+              resolve(null);
+            }
+          });
+        });
+
+        req.on('error', (err) => {
+          clearTimeout(timer);
+          console.warn(`[ERROR] Proxy request error for ${targetUrl}:`, err.message);
+          resolve(null);
+        });
+
+        req.end();
+      });
+
+      connectReq.on('error', (err) => {
+        clearTimeout(timer);
+        console.warn(`[ERROR] Proxy connect error:`, err.message);
+        resolve(null);
+      });
+
+      connectReq.end();
+    } catch (err) {
+      console.warn(`[ERROR] Proxy setup error:`, err.message);
+      resolve(null);
+    }
+  });
 }
 
 async function fetchWallexPrices() {
@@ -83,7 +175,7 @@ async function fetchWallexPrices() {
         change24h: Number(tmn.change24h || 0),
         high24h: Math.round(Number(tmn.dailyHighPrice || price * 1.005)),
         low24h: Math.round(Number(tmn.dailyLowPrice || price * 0.995)),
-        vol24h: 2150000
+        vol24h: 0
       };
     }
   }
@@ -121,7 +213,7 @@ async function fetchAbanTetherPrices() {
       const buyPrice = Math.max(pBuy, pSell);
       const sellPrice = Math.min(pBuy, pSell);
       const rawVolToman = Number(usdt.volume24h || 0);
-      const volUsdt = buyPrice > 0 ? Math.round(rawVolToman / buyPrice) : 3100000;
+      const volUsdt = (buyPrice > 0 && rawVolToman > 0) ? Math.round(rawVolToman / buyPrice) : 0;
       return {
         buyPrice: buyPrice,
         sellPrice: sellPrice,
@@ -433,12 +525,11 @@ async function fetchTetherLandPrices() {
     const low = Math.round(Number(currJson.last24hMin || sellPrice));
     const change = Number(currJson.diff24d || 0);
 
-    let vol = 2150000;
+    let vol = 0;
     if (volJson && volJson.data && volJson.data.markets && volJson.data.markets.USDTTMN && volJson.data.markets.USDTTMN['24h_volume']) {
-      const rawRials = Number(volJson.data.markets.USDTTMN['24h_volume']);
-      if (rawRials > 0 && buyPrice > 0) {
-        // OTC + orderbook volume in USDT
-        vol = Math.round(rawRials / (buyPrice * 10)) + 1850000;
+      const rawToman = Number(volJson.data.markets.USDTTMN['24h_volume']);
+      if (rawToman > 0 && buyPrice > 0) {
+        vol = Math.round(rawToman / buyPrice);
       }
     }
 
@@ -547,7 +638,7 @@ async function fetchTabdealPrices() {
       change24h: change24,
       high24h: Math.max(high24, price),
       low24h: Math.min(low24, price),
-      vol24h: 1420000
+      vol24h: 0
     };
   }
   return null;
@@ -697,7 +788,12 @@ async function fetchBitpinPrices() {
       const high = Math.round(Number((usdt.order_book_info && usdt.order_book_info.max) || (usdt.price_info && usdt.price_info.max) || price));
       const low = Math.round(Number((usdt.order_book_info && usdt.order_book_info.min) || (usdt.price_info && usdt.price_info.min) || price));
       const change = Number((usdt.price_info && usdt.price_info.change != null) ? usdt.price_info.change : (usdt.order_book_info && usdt.order_book_info.change ? usdt.order_book_info.change * 100 : 0));
-      const volUsdt = Math.round(Number(usdt.order_book_info && usdt.order_book_info.amount ? usdt.order_book_info.amount : 2400000)); // order_book_info.amount is USDT!
+      let volUsdt = 0;
+      if (usdt.order_book_info && usdt.order_book_info.amount) {
+        volUsdt = Math.round(Number(usdt.order_book_info.amount));
+      } else if (usdt.order_book_info && usdt.order_book_info.value && price > 0) {
+        volUsdt = Math.round(Number(usdt.order_book_info.value) / price);
+      }
 
       return {
         buyPrice: price,
@@ -798,78 +894,112 @@ async function main() {
     fetchBitpinSparkline()
   ]);
 
-  const basePrice = (wallexRates && wallexRates.buyPrice) || (nobitexRates && nobitexRates.buyPrice) || (abantetherRates && abantetherRates.buyPrice) || (ramzinexRates && ramzinexRates.buyPrice) || (tetherlandRates && tetherlandRates.buyPrice) || (tabdealRates && tabdealRates.buyPrice) || (exirRates && exirRates.buyPrice) || (bitpinRates && bitpinRates.buyPrice) || 256300;
+  const liveResults = {
+    wallex: wallexRates,
+    nobitex: nobitexRates,
+    abantether: abantetherRates,
+    ramzinex: ramzinexRates,
+    tetherland: tetherlandRates,
+    tabdeal: tabdealRates,
+    exir: exirRates,
+    bitpin: bitpinRates
+  };
 
-  // Build exchange rates map
+  const liveSparks = {
+    wallex: wallexSpark,
+    nobitex: nobitexSpark,
+    abantether: abantetherSpark,
+    ramzinex: ramzinexSpark,
+    tetherland: tetherlandSpark,
+    tabdeal: tabdealSpark,
+    exir: exirSpark,
+    bitpin: bitpinSpark
+  };
+
+  const nowIso = new Date().toISOString();
   const rates = {};
-  EXCHANGES_DEF.forEach(def => {
-    let item = {
-      id: def.id,
-      name: def.name,
-      faName: def.faName,
-      buyPrice: def.baseBuy,
-      sellPrice: def.baseSell,
-      change24h: def.change24h,
-      vol24h: def.vol24h,
-      high24h: Math.round(def.baseBuy * 1.01),
-      low24h: Math.round(def.baseBuy * 0.99),
-      sparkline: (existing.rates && existing.rates[def.id] && existing.rates[def.id].sparkline) || []
-    };
 
-    if (def.id === 'wallex' && wallexRates) {
-      item = { ...item, ...wallexRates };
-      if (wallexSpark) item.sparkline = wallexSpark;
-    } else if (def.id === 'nobitex' && nobitexRates) {
-      item = { ...item, ...nobitexRates };
-      if (nobitexSpark && nobitexSpark.length > 0) {
-        item.sparkline = nobitexSpark;
-      } else {
-        let existingSpark = (existing.rates && existing.rates.nobitex && Array.isArray(existing.rates.nobitex.sparkline)) ? existing.rates.nobitex.sparkline : [];
-        if (existingSpark.length < 2) {
-          const open24h = Math.round(Number(nobitexRates.buyPrice) / (1 + (nobitexRates.change24h || 0) / 100));
-          existingSpark = [
-            open24h,
-            nobitexRates.low24h,
-            nobitexRates.high24h,
-            nobitexRates.buyPrice
-          ];
-        } else {
-          existingSpark.push(nobitexRates.buyPrice);
-          if (existingSpark.length > 24) existingSpark.shift();
-        }
-        item.sparkline = existingSpark;
-      }
-    } else if (def.id === 'abantether' && abantetherRates) {
-      item = { ...item, ...abantetherRates };
-      if (abantetherSpark) item.sparkline = abantetherSpark;
-    } else if (def.id === 'ramzinex' && ramzinexRates) {
-      item = { ...item, ...ramzinexRates };
-      if (ramzinexSpark) item.sparkline = ramzinexSpark;
-    } else if (def.id === 'tetherland' && tetherlandRates) {
-      item = { ...item, ...tetherlandRates };
-      if (tetherlandSpark) item.sparkline = tetherlandSpark;
-    } else if (def.id === 'tabdeal' && tabdealRates) {
-      item = { ...item, ...tabdealRates };
-      if (tabdealSpark) item.sparkline = tabdealSpark;
-    } else if (def.id === 'exir' && exirRates) {
-      item = { ...item, ...exirRates };
-      if (exirSpark) item.sparkline = exirSpark;
-    } else if (def.id === 'bitpin' && bitpinRates) {
-      item = { ...item, ...bitpinRates };
-      if (bitpinSpark) item.sparkline = bitpinSpark;
+  EXCHANGES_DEF.forEach(def => {
+    const live = liveResults[def.id];
+    const spark = liveSparks[def.id];
+    const existingRate = (existing.rates && existing.rates[def.id]) || null;
+
+    if (live && typeof live.buyPrice === 'number' && live.buyPrice > 0) {
+      // 1. Live real data successfully received
+      const initialSpark = (spark && spark.length > 0)
+        ? spark
+        : ((existingRate && existingRate.sparkline) || []);
+
+      rates[def.id] = {
+        id: def.id,
+        name: def.name,
+        faName: def.faName,
+        status: 'live',
+        lastSuccessAt: nowIso,
+        buyPrice: live.buyPrice,
+        sellPrice: live.sellPrice,
+        change24h: live.change24h != null ? Number(Number(live.change24h).toFixed(2)) : 0,
+        vol24h: live.vol24h || 0,
+        high24h: live.high24h,
+        low24h: live.low24h,
+        sparkline: initialSpark
+      };
+      console.log(`[OK] Exchange ${def.name}: LIVE (${live.buyPrice.toLocaleString()} Toman)`);
+    } else if (existingRate && typeof existingRate.buyPrice === 'number' && existingRate.buyPrice > 0) {
+      // 2. Live fetch failed, preserve real existing snapshot as stale
+      rates[def.id] = {
+        id: def.id,
+        name: def.name,
+        faName: def.faName,
+        status: 'stale',
+        lastSuccessAt: existingRate.lastSuccessAt || existing.updatedAt || nowIso,
+        buyPrice: existingRate.buyPrice,
+        sellPrice: existingRate.sellPrice,
+        change24h: existingRate.change24h != null ? Number(Number(existingRate.change24h).toFixed(2)) : 0,
+        vol24h: existingRate.vol24h || 0,
+        high24h: existingRate.high24h,
+        low24h: existingRate.low24h,
+        sparkline: existingRate.sparkline || []
+      };
+      console.warn(`[WARN] Exchange ${def.name}: STALE (Preserved snapshot from ${rates[def.id].lastSuccessAt})`);
     } else {
-      // Offset slightly relative to active basePrice
-      const diff = def.baseBuy - 256300;
-      item.buyPrice = basePrice + diff;
-      item.sellPrice = basePrice + diff - 80;
-      item.high24h = Math.round(item.buyPrice * 1.008);
-      item.low24h = Math.round(item.buyPrice * 0.992);
+      // 3. Failed: Never invent synthetic prices or mock data
+      rates[def.id] = {
+        id: def.id,
+        name: def.name,
+        faName: def.faName,
+        status: 'failed',
+        lastSuccessAt: null,
+        buyPrice: null,
+        sellPrice: null,
+        change24h: null,
+        vol24h: null,
+        high24h: null,
+        low24h: null,
+        sparkline: []
+      };
+      console.error(`[ERROR] Exchange ${def.name}: FAILED (No live data and no previous snapshot)`);
     }
-    if (item.change24h != null) {
-      item.change24h = Number(Number(item.change24h).toFixed(2));
-    }
-    rates[def.id] = item;
   });
+
+  const liveCount = Object.values(rates).filter(r => r.status === 'live').length;
+  console.log(`\n[STATUS SUMMARY] Live exchanges: ${liveCount}/${EXCHANGES_DEF.length}`);
+
+  // Critical threshold check: abort and fail CI if too many exchanges failed
+  if (liveCount < 4) {
+    console.error(`[CRITICAL] Only ${liveCount}/${EXCHANGES_DEF.length} exchanges fetched successfully. Threshold is 4. Aborting without saving to avoid corrupting market data.`);
+    process.exit(1);
+  }
+
+  // Calculate Volume-Weighted Average Price (VWAP) across all valid rates
+  const validRates = Object.values(rates).filter(r => typeof r.buyPrice === 'number' && r.buyPrice > 50000 && r.buyPrice < 500000);
+  let basePrice = existing.basePrice || 260000;
+  if (validRates.length > 0) {
+    const totalVol = validRates.reduce((acc, r) => acc + (r.vol24h || 0), 0);
+    const weightedSum = validRates.reduce((acc, r) => acc + (r.buyPrice * (r.vol24h || 100000)), 0);
+    const weightTotal = validRates.reduce((acc, r) => acc + (r.vol24h || 100000), 0);
+    basePrice = Math.round(weightedSum / weightTotal);
+  }
 
   // Fetch candle historical sets for chart
   const timeframes = ['1H', '24H', '7D', '30D', '1Y'];
@@ -938,62 +1068,64 @@ async function main() {
   }
 
   // Compute accurate 24H high & low from actual candles so table matches chart
-  if (candles['abantether_24H'] && candles['abantether_24H'].length > 0 && rates.abantether) {
+  if (candles['abantether_24H'] && candles['abantether_24H'].length > 0 && rates.abantether && rates.abantether.buyPrice != null) {
     const abanCandles = candles['abantether_24H'];
     rates.abantether.high24h = Math.max(...abanCandles.map(p => p.high), rates.abantether.buyPrice);
     rates.abantether.low24h = Math.min(...abanCandles.map(p => p.low), rates.abantether.sellPrice);
   }
 
-  if (candles['wallex_24H'] && candles['wallex_24H'].length > 0 && rates.wallex) {
+  if (candles['wallex_24H'] && candles['wallex_24H'].length > 0 && rates.wallex && rates.wallex.buyPrice != null) {
     const wallexCandles = candles['wallex_24H'];
     rates.wallex.high24h = Math.max(...wallexCandles.map(p => p.high), rates.wallex.buyPrice);
     rates.wallex.low24h = Math.min(...wallexCandles.map(p => p.low), rates.wallex.sellPrice);
   }
 
-  if (candles['ramzinex_24H'] && candles['ramzinex_24H'].length > 0 && rates.ramzinex) {
+  if (candles['ramzinex_24H'] && candles['ramzinex_24H'].length > 0 && rates.ramzinex && rates.ramzinex.buyPrice != null) {
     const ramzCandles = candles['ramzinex_24H'];
     rates.ramzinex.high24h = Math.max(...ramzCandles.map(p => p.high), rates.ramzinex.buyPrice);
     rates.ramzinex.low24h = Math.min(...ramzCandles.map(p => p.low), rates.ramzinex.sellPrice);
   }
 
-  if (candles['tetherland_24H'] && candles['tetherland_24H'].length > 0 && rates.tetherland) {
+  if (candles['tetherland_24H'] && candles['tetherland_24H'].length > 0 && rates.tetherland && rates.tetherland.buyPrice != null) {
     const tethCandles = candles['tetherland_24H'];
-    rates.tetherland.high24h = Math.max(...tethCandles.map(p => p.high), rates.tetherland.high24h, rates.tetherland.buyPrice);
-    rates.tetherland.low24h = Math.min(...tethCandles.map(p => p.low), rates.tetherland.low24h, rates.tetherland.sellPrice);
+    rates.tetherland.high24h = Math.max(...tethCandles.map(p => p.high), rates.tetherland.high24h || rates.tetherland.buyPrice, rates.tetherland.buyPrice);
+    rates.tetherland.low24h = Math.min(...tethCandles.map(p => p.low), rates.tetherland.low24h || rates.tetherland.sellPrice, rates.tetherland.sellPrice);
   }
 
-  if (candles['tabdeal_24H'] && candles['tabdeal_24H'].length > 0 && rates.tabdeal) {
+  if (candles['tabdeal_24H'] && candles['tabdeal_24H'].length > 0 && rates.tabdeal && rates.tabdeal.buyPrice != null) {
     const tabCandles = candles['tabdeal_24H'];
-    rates.tabdeal.high24h = Math.max(...tabCandles.map(p => p.high), rates.tabdeal.high24h, rates.tabdeal.buyPrice);
-    rates.tabdeal.low24h = Math.min(...tabCandles.map(p => p.low), rates.tabdeal.low24h, rates.tabdeal.sellPrice);
+    rates.tabdeal.high24h = Math.max(...tabCandles.map(p => p.high), rates.tabdeal.high24h || rates.tabdeal.buyPrice, rates.tabdeal.buyPrice);
+    rates.tabdeal.low24h = Math.min(...tabCandles.map(p => p.low), rates.tabdeal.low24h || rates.tabdeal.sellPrice, rates.tabdeal.sellPrice);
     const totalUsdtVol = tabCandles.reduce((acc, c) => acc + (c.volume || 0), 0);
     if (totalUsdtVol > 0) {
       rates.tabdeal.vol24h = Math.round(totalUsdtVol); // USDT volume (not multiplied by buyPrice)!
     }
   }
 
-  if (candles['exir_24H'] && candles['exir_24H'].length > 0 && rates.exir) {
+  if (candles['exir_24H'] && candles['exir_24H'].length > 0 && rates.exir && rates.exir.buyPrice != null) {
     const exirCandles = candles['exir_24H'];
-    rates.exir.high24h = Math.max(...exirCandles.map(p => p.high), rates.exir.high24h, rates.exir.buyPrice);
-    rates.exir.low24h = Math.min(...exirCandles.map(p => p.low), rates.exir.low24h, rates.exir.sellPrice);
+    rates.exir.high24h = Math.max(...exirCandles.map(p => p.high), rates.exir.high24h || rates.exir.buyPrice, rates.exir.buyPrice);
+    rates.exir.low24h = Math.min(...exirCandles.map(p => p.low), rates.exir.low24h || rates.exir.sellPrice, rates.exir.sellPrice);
   }
 
-  if (candles['bitpin_24H'] && candles['bitpin_24H'].length > 0 && rates.bitpin) {
+  if (candles['bitpin_24H'] && candles['bitpin_24H'].length > 0 && rates.bitpin && rates.bitpin.buyPrice != null) {
     const bitpinCandles = candles['bitpin_24H'];
-    rates.bitpin.high24h = Math.max(...bitpinCandles.map(p => p.high), rates.bitpin.high24h, rates.bitpin.buyPrice);
-    rates.bitpin.low24h = Math.min(...bitpinCandles.map(p => p.low), rates.bitpin.low24h, rates.bitpin.sellPrice);
+    rates.bitpin.high24h = Math.max(...bitpinCandles.map(p => p.high), rates.bitpin.high24h || rates.bitpin.buyPrice, rates.bitpin.buyPrice);
+    rates.bitpin.low24h = Math.min(...bitpinCandles.map(p => p.low), rates.bitpin.low24h || rates.bitpin.sellPrice, rates.bitpin.sellPrice);
   }
 
   // Ensure high24h >= buyPrice, low24h <= sellPrice, positive spread, and 2 decimal places for all exchanges
   Object.keys(rates).forEach(id => {
     const r = rates[id];
-    if (r.buyPrice < r.sellPrice) {
-      const tmp = r.buyPrice;
-      r.buyPrice = r.sellPrice;
-      r.sellPrice = tmp;
+    if (r.buyPrice != null && r.sellPrice != null) {
+      if (r.buyPrice < r.sellPrice) {
+        const tmp = r.buyPrice;
+        r.buyPrice = r.sellPrice;
+        r.sellPrice = tmp;
+      }
+      if (r.high24h != null && r.high24h < r.buyPrice) r.high24h = r.buyPrice;
+      if (r.low24h != null && r.low24h > r.sellPrice) r.low24h = r.sellPrice;
     }
-    if (r.high24h < r.buyPrice) r.high24h = r.buyPrice;
-    if (r.low24h > r.sellPrice) r.low24h = r.sellPrice;
     if (r.change24h != null) {
       r.change24h = Number(Number(r.change24h).toFixed(2));
     }

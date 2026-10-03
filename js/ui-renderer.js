@@ -77,7 +77,7 @@ class UIRenderer {
   }
 
   formatChange(val) {
-    if (val == null || isNaN(val)) return 0;
+    if (val == null || isNaN(val)) return null;
     return Number(Number(val).toFixed(2));
   }
 
@@ -96,12 +96,17 @@ class UIRenderer {
     }
     if (heroChangeEl) {
       const chVal = this.formatChange(stats.change24h);
-      const isPos = chVal >= 0;
-      heroChangeEl.className = `change-badge ${isPos ? 'positive' : 'negative'}`;
-      heroChangeEl.innerHTML = `
-        <i class="ph ${isPos ? 'ph-trend-up' : 'ph-trend-down'}"></i>
-        <span>${isPos ? '+' : ''}${chVal}%</span>
-      `;
+      if (chVal == null) {
+        heroChangeEl.className = 'change-badge neutral';
+        heroChangeEl.innerHTML = `<span>--</span>`;
+      } else {
+        const isPos = chVal >= 0;
+        heroChangeEl.className = `change-badge ${isPos ? 'positive' : 'negative'}`;
+        heroChangeEl.innerHTML = `
+          <i class="ph ${isPos ? 'ph-trend-up' : 'ph-trend-down'}"></i>
+          <span>${isPos ? '+' : ''}${chVal}%</span>
+        `;
+      }
     }
     if (metricHighEl) {
       metricHighEl.textContent = window.dataAdapter.formatPrice(stats.high24h);
@@ -129,8 +134,16 @@ class UIRenderer {
 
     // Sort
     list.sort((a, b) => {
-      if (this.sortBy === 'best_buy') return a.buyPrice - b.buyPrice;
-      if (this.sortBy === 'best_sell') return b.sellPrice - a.sellPrice;
+      if (this.sortBy === 'best_buy') {
+        if (a.buyPrice == null) return 1;
+        if (b.buyPrice == null) return -1;
+        return a.buyPrice - b.buyPrice;
+      }
+      if (this.sortBy === 'best_sell') {
+        if (a.sellPrice == null) return 1;
+        if (b.sellPrice == null) return -1;
+        return b.sellPrice - a.sellPrice;
+      }
       if (this.sortBy === 'name') return a.name.localeCompare(b.name);
       return 0;
     });
@@ -145,7 +158,25 @@ class UIRenderer {
       row.id = `row-${ex.id}`;
 
       const chVal = this.formatChange(ex.change24h);
-      const isPos = chVal >= 0;
+      let changeBadgeHtml = '';
+      if (chVal == null) {
+        changeBadgeHtml = `<span class="change-badge neutral"><span>--</span></span>`;
+      } else {
+        const isPos = chVal >= 0;
+        changeBadgeHtml = `
+          <span class="change-badge ${isPos ? 'positive' : 'negative'}">
+            <i class="ph ${isPos ? 'ph-trend-up' : 'ph-trend-down'}"></i>
+            <span>${isPos ? '+' : ''}${chVal}%</span>
+          </span>
+        `;
+      }
+
+      const statusTag = ex.status === 'stale'
+        ? `<span class="ex-status-tag stale" title="عدم دریافت زنده - آخرین نرخ معتبر">آفلاین</span>`
+        : (ex.status === 'failed'
+          ? `<span class="ex-status-tag failed" title="خطا در دریافت نرخ">قطع ارتباط</span>`
+          : '');
+
       const buyFormatted = window.dataAdapter.formatPriceNum(ex.buyPrice);
       const sellFormatted = window.dataAdapter.formatPriceNum(ex.sellPrice);
       const highFormatted = window.dataAdapter.formatPriceNum(ex.high24h);
@@ -156,7 +187,10 @@ class UIRenderer {
         <div class="ex-col-info">
           <div class="ex-avatar">${ex.name.substring(0, 2).toUpperCase()}</div>
           <div class="ex-name-box">
-            <span class="ex-name-eng" dir="ltr">${ex.name}</span>
+            <div class="ex-name-row">
+              <span class="ex-name-eng" dir="ltr">${ex.name}</span>
+              ${statusTag}
+            </div>
             <span class="ex-name-fa">${ex.faName}</span>
           </div>
         </div>
@@ -182,10 +216,7 @@ class UIRenderer {
 
         <!-- Col 5: 24h Change -->
         <div class="ex-col-change">
-          <span class="change-badge ${isPos ? 'positive' : 'negative'}">
-            <i class="ph ${isPos ? 'ph-trend-up' : 'ph-trend-down'}"></i>
-            <span>${isPos ? '+' : ''}${chVal}%</span>
-          </span>
+          ${changeBadgeHtml}
         </div>
 
         <!-- Col 6: 24h High / Low Range -->
@@ -212,7 +243,8 @@ class UIRenderer {
   drawAllSparklines() {
     const list = window.dataAdapter.getExchangeRates();
     list.forEach(ex => {
-      this.drawSparkline(ex.id, this.formatChange(ex.change24h) >= 0);
+      const ch = this.formatChange(ex.change24h);
+      this.drawSparkline(ex.id, ch !== null ? ch >= 0 : true);
     });
   }
 

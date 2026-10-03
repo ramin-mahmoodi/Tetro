@@ -276,6 +276,37 @@
   color: #ffffff;
 }
 
+.change-badge.neutral {
+  background-color: rgba(148, 163, 184, 0.2);
+  color: var(--textSecondary, #64748b);
+}
+
+.ex-name-row {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+}
+
+.ex-status-tag {
+  display: inline-block;
+  font: 700 10px/10px var(--mainFont);
+  padding: 2px 5px;
+  border-radius: 3px;
+  letter-spacing: normal;
+}
+
+.ex-status-tag.stale {
+  background-color: rgba(245, 158, 11, 0.15);
+  color: #d97706;
+  border: 1px solid rgba(245, 158, 11, 0.35);
+}
+
+.ex-status-tag.failed {
+  background-color: rgba(239, 68, 68, 0.15);
+  color: #dc2626;
+  border: 1px solid rgba(239, 68, 68, 0.35);
+}
+
 /* --------------------------------------------------------------------------
    EXCHANGES SECTION: 1 ROW PER EXCHANGE (FULL WIDTH TABLE LIST)
    With 24h mini sparkline canvas in each row!
