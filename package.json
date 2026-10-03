@@ -1,0 +1,23 @@
+{
+  "name": "tetro",
+  "version": "1.0.0",
+  "private": true,
+  "description": "Real-time Iranian USDT (Tether) exchange tracker and brutalist market engine",
+  "main": "server.js",
+  "scripts": {
+    "start": "node server.js",
+    "test": "node --test tests/*.test.js",
+    "lint": "node --check server.js js/*.js scripts/*.js tests/*.test.js",
+    "sync": "node scripts/fetch-market-data.js",
+    "build": "node scripts/build.js"
+  },
+  "keywords": [
+    "tether",
+    "usdt",
+    "iran-crypto",
+    "pwa",
+    "market-tracker"
+  ],
+  "author": "Ramin Mahmoodi <ramin-mahmoodi@users.noreply.github.com>",
+  "license": "MIT"
+}

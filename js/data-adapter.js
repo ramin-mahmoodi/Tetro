@@ -14,9 +14,50 @@ const EXCHANGES_DEF = [
   { id: 'bitpin', name: 'Bitpin', faName: 'بیت‌پین' }
 ];
 
+// Cached formatters to eliminate repeated ICU/locale object allocations
+const DATA_DATE_FORMATTERS = {
+  time24: new Intl.DateTimeFormat('en-US', { hour12: false, hour: '2-digit', minute: '2-digit', timeZone: 'Asia/Tehran' }),
+  faMonthDay: new Intl.DateTimeFormat('fa-IR', { month: 'short', day: 'numeric', timeZone: 'Asia/Tehran' }),
+  faYearMonth: new Intl.DateTimeFormat('fa-IR', { year: 'numeric', month: 'short', day: 'numeric', timeZone: 'Asia/Tehran' }),
+  enMonthDay: new Intl.DateTimeFormat('en-US', { month: 'short', day: 'numeric', timeZone: 'Asia/Tehran' }),
+  enYearMonth: new Intl.DateTimeFormat('en-US', { year: 'numeric', month: 'short', day: 'numeric', timeZone: 'Asia/Tehran' })
+};
+
+const UDF_CONFIGS = {
+  wallex: {
+    divisor: 1,
+    url: (res, from, to) => `https://api.wallex.ir/v1/udf/history?symbol=USDTTMN&resolution=${res}&from=${from}&to=${to}`
+  },
+  nobitex: {
+    divisor: 1,
+    url: (res, from, to, countback) => `https://apiv2.nobitex.ir/market/udf/history?symbol=USDTIRT&resolution=${res}&from=${from}&to=${to}&countback=${countback}`
+  },
+  abantether: {
+    divisor: 1,
+    url: (res, from, to, countback) => `https://api.abantether.com/otc_reporting/tradingview/history?symbol=USDT%2FIRT&resolution=${res}&from=${from}&to=${to}&countback=${countback}`
+  },
+  ramzinex: {
+    divisor: 10,
+    url: (res, from, to, countback) => `https://publicapi.ramzinex.ir/exchange/api/v1.0/exchange/chart/tv/v2.0/history?symbol=USDTIRR&resolution=${res}&from=${from}&to=${to}&countback=${countback}`
+  },
+  tabdeal: {
+    divisor: 1,
+    url: (res, from, to, countback) => `https://api-web.tabdeal.org/r/plots/history/?first_currency_symbol=USDT&second_currency_symbol=IRT&from=${from}&to=${to}&resolution=${res}&countback=${countback}&symbol=USDT_IRT`
+  },
+  exir: {
+    divisor: 1,
+    url: (res, from, to) => `https://api.exir.io/v2/chart?symbol=usdt-irt&resolution=${res}&from=${from}&to=${to}`
+  },
+  bitpin: {
+    divisor: 1,
+    url: (res, from, to) => `https://api.bitpin.ir/v1/mkt/tv/get_bars/?symbol=USDT_IRT&res=${res}&from=${from}&to=${to}`
+  }
+};
+
 class DataAdapter {
   constructor() {
-    this.currentCurrency = 'TOMAN'; // TOMAN | RIAL | USD
+    const savedCurrency = (typeof localStorage !== 'undefined' && localStorage.getItem('tetro_currency')) || 'TOMAN';
+    this.currentCurrency = savedCurrency === 'RIAL' ? 'RIAL' : 'TOMAN';
     this.rates = new Map();
     this.historyCache = new Map();
     this.subscribers = new Set();
@@ -48,7 +89,6 @@ class DataAdapter {
         lastSuccessAt: null,
         buyPrice: null,
         sellPrice: null,
-        spread: 0,
         vol24h: 0,
         change24h: null,
         high24h: null,
@@ -136,7 +176,6 @@ class DataAdapter {
           current.lastSuccessAt = item.lastSuccessAt || null;
           current.buyPrice = item.buyPrice != null ? item.buyPrice : current.buyPrice;
           current.sellPrice = item.sellPrice != null ? item.sellPrice : current.sellPrice;
-          current.spread = (current.buyPrice != null && current.sellPrice != null) ? Math.max(0, current.buyPrice - current.sellPrice) : 0;
           current.change24h = item.change24h != null ? Number(Number(item.change24h).toFixed(2)) : current.change24h;
           current.high24h = item.high24h != null ? item.high24h : current.high24h;
           current.low24h = item.low24h != null ? item.low24h : current.low24h;
@@ -223,7 +262,7 @@ class DataAdapter {
   }
 
   getAggregateStats() {
-    const list = this.getExchangeRates().filter(r => !r.isGlobal && r.status !== 'failed');
+    const list = this.getExchangeRates().filter(r => r.status !== 'failed');
     if (!list.length) return null;
 
     // Filter valid prices in normal reasonable range
@@ -286,8 +325,6 @@ class DataAdapter {
     if (rawToman == null) return '--';
     if (currency === 'RIAL') {
       return (rawToman * 10).toLocaleString('en-US') + ' ریال';
-    } else if (currency === 'USD') {
-      return '$1.00';
     }
     // Default TOMAN
     return rawToman.toLocaleString('en-US') + ' تومان';
@@ -297,15 +334,16 @@ class DataAdapter {
     if (rawToman == null) return '--';
     if (currency === 'RIAL') {
       return (rawToman * 10).toLocaleString('en-US');
-    } else if (currency === 'USD') {
-      return '1.00';
     }
     return rawToman.toLocaleString('en-US');
   }
 
   setCurrency(curr) {
-    this.currentCurrency = curr;
-    this.notify({ type: 'currency_change', currency: curr });
+    this.currentCurrency = curr === 'RIAL' ? 'RIAL' : 'TOMAN';
+    if (typeof localStorage !== 'undefined') {
+      localStorage.setItem('tetro_currency', this.currentCurrency);
+    }
+    this.notify({ type: 'currency_change', currency: this.currentCurrency });
   }
 
   consolidateCandles(rawCandles, maxBars = 140) {
@@ -335,10 +373,58 @@ class DataAdapter {
     return result;
   }
 
-  // Live historical candle data fetcher
+  parseCandleBars(data, { divisor = 1, timeframe = '24H' } = {}) {
+    const raw = [];
+    if (data && data.s === 'ok' && Array.isArray(data.t) && Array.isArray(data.c)) {
+      // Standard TradingView UDF format { s: 'ok', t, o, h, l, c, v }
+      for (let i = 0; i < data.t.length; i++) {
+        const d = new Date(data.t[i] * 1000);
+        const o = Math.round(Number(data.o ? data.o[i] : data.c[i]) / divisor);
+        const h = Math.round(Number(data.h ? data.h[i] : data.c[i]) / divisor);
+        const l = Math.round(Number(data.l ? data.l[i] : data.c[i]) / divisor);
+        const c = Math.round(Number(data.c[i]) / divisor);
+        const v = Math.round(Number(data.v ? data.v[i] : 0));
+        raw.push({
+          time: d,
+          open: o,
+          high: Math.max(h, o, c),
+          low: Math.min(l, o, c),
+          close: c,
+          price: c,
+          volume: v,
+          label: this.formatTimeLabel(d, timeframe)
+        });
+      }
+    } else if (Array.isArray(data)) {
+      // Array of candle objects [{ time, open, high, low, close, volume }]
+      for (let i = 0; i < data.length; i++) {
+        const item = data[i];
+        const rawTime = typeof item.time === 'number' ? (item.time > 1e11 ? item.time : item.time * 1000) : item.time;
+        const d = new Date(rawTime);
+        const o = Math.round(Number(item.open != null ? item.open : item.close) / divisor);
+        const h = Math.round(Number(item.high != null ? item.high : item.close) / divisor);
+        const l = Math.round(Number(item.low != null ? item.low : item.close) / divisor);
+        const c = Math.round(Number(item.close) / divisor);
+        const v = Math.round(Number(item.volume || 0));
+        raw.push({
+          time: d,
+          open: o,
+          high: Math.max(h, o, c),
+          low: Math.min(l, o, c),
+          close: c,
+          price: c,
+          volume: v,
+          label: this.formatTimeLabel(d, timeframe)
+        });
+      }
+    }
+    return raw;
+  }
+
+  // Live historical candle data fetcher (table-driven, clean & DRY)
   async getHistory(timeframe = '24H', sourceId = 'aggregate') {
     const cacheKey = `${sourceId}_${timeframe}`;
-    if (this.historyCache.has(cacheKey)) {
+    if (this.historyCache.has(cacheKey) && this.historyCache.get(cacheKey).length > 0) {
       return this.historyCache.get(cacheKey);
     }
 
@@ -353,693 +439,79 @@ class DataAdapter {
       }
     }
 
-    const tfMap = {
-      '1H': { resolution: '1', sec: 3600 },
-      '24H': { resolution: '15', sec: 86400 },
-      '7D': { resolution: '60', sec: 7 * 86400 },
-      '30D': { resolution: '240', sec: 30 * 86400 },
-      '1Y': { resolution: '1D', sec: 365 * 86400 }
-    };
-    const cfg = tfMap[timeframe] || { resolution: '60', sec: 86400 };
-    const now = Math.floor(Date.now() / 1000);
-    const from = now - cfg.sec;
-
+    const endpointDef = UDF_CONFIGS[sourceId];
     const isLocal = typeof window !== 'undefined' && (window.location.hostname === 'localhost' || window.location.hostname === '127.0.0.1');
 
-    // 2. When source is Wallex:
-    if (sourceId === 'wallex') {
-      if (isLocal) {
-        try {
-          const targetUrl = `https://api.wallex.ir/v1/udf/history?symbol=USDTTMN&resolution=${cfg.resolution}&from=${from}&to=${now}`;
-          const proxyUrl = this.getProxyUrl(targetUrl);
-          if (proxyUrl) {
-            const controller = new AbortController();
-            const timeout = setTimeout(() => controller.abort(), 2500);
-            const res = await fetch(proxyUrl, { signal: controller.signal });
-            clearTimeout(timeout);
-            if (res.ok) {
-              const json = await res.json();
-              if (json.s === 'ok' && Array.isArray(json.t) && Array.isArray(json.c) && json.t.length > 0) {
-                const raw = [];
-                for (let i = 0; i < json.t.length; i++) {
-                  const d = new Date(json.t[i] * 1000);
-                  const open = Math.round(Number(json.o ? json.o[i] : json.c[i]));
-                  const high = Math.round(Number(json.h ? json.h[i] : json.c[i]));
-                  const low = Math.round(Number(json.l ? json.l[i] : json.c[i]));
-                  const close = Math.round(Number(json.c[i]));
-                  const vol = Math.round(Number(json.v ? json.v[i] : 0));
-                  raw.push({
-                    time: d,
-                    open: open,
-                    high: Math.max(high, open, close),
-                    low: Math.min(low, open, close),
-                    close: close,
-                    price: close,
-                    volume: vol,
-                    label: this.formatTimeLabel(d, timeframe)
-                  });
-                }
-                const maxBars = timeframe === '1Y' ? 400 : 140;
-                const points = this.consolidateCandles(raw, maxBars);
-                this.historyCache.set(cacheKey, points);
-                this.historyCache.set(`wallex_${timeframe}`, points);
-                return points;
-              }
-            }
-          }
-        } catch (err) {
-          console.warn('Wallex UDF fetch error:', err.message);
-        }
-      }
-
-      if (this.historyCache.has(cacheKey) && this.historyCache.get(cacheKey).length > 0) {
-        return this.historyCache.get(cacheKey);
-      }
-      if (this.historyCache.has(`wallex_${timeframe}`) && this.historyCache.get(`wallex_${timeframe}`).length > 0) {
-        return this.historyCache.get(`wallex_${timeframe}`);
-      }
-
-      const emptyWallex = [];
-      emptyWallex.noData = true;
-      emptyWallex.source = sourceId;
-      emptyWallex.message = 'داده‌های تاریخچه والکس در دسترس نیست';
-      return emptyWallex;
-    }
-
-    // 2. When source is Nobitex:
-    if (sourceId === 'nobitex') {
-      if (this.historyCache.has(cacheKey) && this.historyCache.get(cacheKey).length > 0) {
-        return this.historyCache.get(cacheKey);
-      }
-
-      // Only attempt network call on local dev server where local proxy is running
-      if (isLocal) {
-        try {
-          const nobiTfMap = {
-            '1H': { resolution: '1', countback: 60, sec: 3600 },
-            '24H': { resolution: '15', countback: 96, sec: 86400 },
-            '7D': { resolution: '60', countback: 168, sec: 7 * 86400 },
-            '30D': { resolution: '240', countback: 120, sec: 30 * 86400 },
-            '1Y': { resolution: '720', countback: 329, sec: 365 * 86400 }
-          };
-          const ncfg = nobiTfMap[timeframe] || { resolution: '60', countback: 100, sec: 86400 };
-          const nfrom = now - ncfg.sec;
-          const targetUrl = `https://apiv2.nobitex.ir/market/udf/history?symbol=USDTIRT&resolution=${ncfg.resolution}&from=${nfrom}&to=${now}&countback=${ncfg.countback}`;
-          const proxyUrl = this.getProxyUrl(targetUrl);
-          if (proxyUrl) {
-            const controller = new AbortController();
-            const timeout = setTimeout(() => controller.abort(), 2000);
-            const res = await fetch(proxyUrl, { signal: controller.signal });
-            clearTimeout(timeout);
-            if (res.ok) {
-              const json = await res.json();
-              if (json.s === 'ok' && Array.isArray(json.t) && Array.isArray(json.c) && json.t.length > 0) {
-                const points = [];
-                const step = Math.max(1, Math.floor(json.t.length / 140));
-                const divisor = Number(json.c[0]) > 1000000 ? 10 : 1;
-                for (let i = 0; i < json.t.length; i += step) {
-                  const d = new Date(json.t[i] * 1000);
-                  const open = Math.round(Number(json.o ? json.o[i] : json.c[i]) / divisor);
-                  const high = Math.round(Number(json.h ? json.h[i] : json.c[i]) / divisor);
-                  const low = Math.round(Number(json.l ? json.l[i] : json.c[i]) / divisor);
-                  const close = Math.round(Number(json.c[i]) / divisor);
-                  const vol = Math.round(Number(json.v ? json.v[i] : 0));
-                  points.push({
-                    time: d,
-                    open: open,
-                    high: high,
-                    low: low,
-                    close: close,
-                    price: close,
-                    volume: vol,
-                    label: this.formatTimeLabel(d, timeframe)
-                  });
-                }
-                this.historyCache.set(cacheKey, points);
-                return points;
-              }
-            }
-          }
-        } catch (err) {
-          console.warn('Nobitex UDF fetch error:', err.message);
-        }
-      }
-
-      // Return immediately without waiting for any network timeout
-      const emptyResult = [];
-      emptyResult.noData = true;
-      emptyResult.source = 'nobitex';
-      emptyResult.message = 'داده‌های تاریخچه نوبیتکس در دسترس نیست (سمت سرور نوبیتکس در حال حاضر ارسال نمی‌شود)';
-      return emptyResult;
-    }
-
-    // 3. When source is AbanTether:
-    if (sourceId === 'abantether') {
-      if (this.historyCache.has(cacheKey) && this.historyCache.get(cacheKey).length > 0) {
-        return this.historyCache.get(cacheKey);
-      }
-
-      if (isLocal) {
-        try {
-          const abanTfMap = {
-            '1H': { resolution: '1', sec: 3600, countback: 60 },
-            '24H': { resolution: '15', sec: 86400, countback: 96 },
-            '7D': { resolution: '60', sec: 7 * 86400, countback: 168 },
-            '30D': { resolution: '240', sec: 30 * 86400, countback: 180 },
-            '1Y': { resolution: '1D', sec: 365 * 86400, countback: 365 }
-          };
-          const acfg = abanTfMap[timeframe] || { resolution: '60', sec: 86400, countback: 96 };
-          const afrom = now - acfg.sec;
-          const targetUrl = `https://api.abantether.com/otc_reporting/tradingview/history?symbol=USDT%2FIRT&resolution=${acfg.resolution}&from=${afrom}&to=${now}&countback=${acfg.countback}`;
-          const proxyUrl = this.getProxyUrl(targetUrl);
-          if (proxyUrl) {
-            const controller = new AbortController();
-            const timeout = setTimeout(() => controller.abort(), 2500);
-            const res = await fetch(proxyUrl, { signal: controller.signal });
-            clearTimeout(timeout);
-            if (res.ok) {
-              const json = await res.json();
-              if (json.s === 'ok' && Array.isArray(json.t) && Array.isArray(json.c) && json.t.length > 0) {
-                const points = [];
-                const step = Math.max(1, Math.floor(json.t.length / 140));
-                for (let i = 0; i < json.t.length; i += step) {
-                  const d = new Date(json.t[i] * 1000);
-                  points.push({
-                    time: d,
-                    open: Math.round(Number(json.o ? json.o[i] : json.c[i])),
-                    high: Math.round(Number(json.h ? json.h[i] : json.c[i])),
-                    low: Math.round(Number(json.l ? json.l[i] : json.c[i])),
-                    close: Math.round(Number(json.c[i])),
-                    price: Math.round(Number(json.c[i])),
-                    volume: Math.round(Number(json.v ? json.v[i] : 0)),
-                    label: this.formatTimeLabel(d, timeframe)
-                  });
-                }
-                const lastIdx = json.t.length - 1;
-                const lastTime = new Date(json.t[lastIdx] * 1000);
-                if (points.length && points[points.length - 1].time.getTime() !== lastTime.getTime()) {
-                  points.push({
-                    time: lastTime,
-                    open: Math.round(Number(json.o ? json.o[lastIdx] : json.c[lastIdx])),
-                    high: Math.round(Number(json.h ? json.h[lastIdx] : json.c[lastIdx])),
-                    low: Math.round(Number(json.l ? json.l[lastIdx] : json.c[lastIdx])),
-                    close: Math.round(Number(json.c[lastIdx])),
-                    price: Math.round(Number(json.c[lastIdx])),
-                    volume: Math.round(Number(json.v ? json.v[lastIdx] : 0)),
-                    label: this.formatTimeLabel(lastTime, timeframe)
-                  });
-                }
-                this.historyCache.set(cacheKey, points);
-                return points;
-              }
-            }
-          }
-        } catch (err) {
-          console.warn('AbanTether UDF fetch error:', err.message);
-        }
-      }
-
-      if (this.historyCache.has(cacheKey) && this.historyCache.get(cacheKey).length > 0) {
-        return this.historyCache.get(cacheKey);
-      }
-
-      const emptyAban = [];
-      emptyAban.noData = true;
-      emptyAban.source = 'abantether';
-      emptyAban.message = 'داده‌های تاریخچه آبان‌تتر در دسترس نیست';
-      return emptyAban;
-    }
-
-    // 4. When source is Ramzinex:
-    if (sourceId === 'ramzinex') {
-      if (this.historyCache.has(cacheKey) && this.historyCache.get(cacheKey).length > 0) {
-        return this.historyCache.get(cacheKey);
-      }
-
-      if (isLocal) {
-        try {
-          const ramzTfMap = {
-            '1H': { resolution: '1', sec: 3600, countback: 60 },
-            '24H': { resolution: '15', sec: 86400, countback: 96 },
-            '7D': { resolution: '60', sec: 7 * 86400, countback: 168 },
-            '30D': { resolution: '240', sec: 30 * 86400, countback: 180 },
-            '1Y': { resolution: '1D', sec: 365 * 86400, countback: 365 }
-          };
-          const rcfg = ramzTfMap[timeframe] || { resolution: '60', sec: 86400, countback: 96 };
-          const rfrom = now - rcfg.sec;
-          const targetUrl = `https://publicapi.ramzinex.ir/exchange/api/v1.0/exchange/chart/tv/v2.0/history?symbol=USDTIRR&resolution=${rcfg.resolution}&from=${rfrom}&to=${now}&countback=${rcfg.countback}`;
-          const proxyUrl = this.getProxyUrl(targetUrl);
-          if (proxyUrl) {
-            const controller = new AbortController();
-            const timeout = setTimeout(() => controller.abort(), 2500);
-            const res = await fetch(proxyUrl, { signal: controller.signal });
-            clearTimeout(timeout);
-            if (res.ok) {
-              const json = await res.json();
-              if (json.s === 'ok' && Array.isArray(json.t) && Array.isArray(json.c) && json.t.length > 0) {
-                const points = [];
-                const step = Math.max(1, Math.floor(json.t.length / 140));
-                for (let i = 0; i < json.t.length; i += step) {
-                  const d = new Date(json.t[i] * 1000);
-                  points.push({
-                    time: d,
-                    open: Math.round(Number(json.o ? json.o[i] : json.c[i]) / 10),
-                    high: Math.round(Number(json.h ? json.h[i] : json.c[i]) / 10),
-                    low: Math.round(Number(json.l ? json.l[i] : json.c[i]) / 10),
-                    close: Math.round(Number(json.c[i]) / 10),
-                    price: Math.round(Number(json.c[i]) / 10),
-                    volume: Math.round(Number(json.v ? json.v[i] : 0)),
-                    label: this.formatTimeLabel(d, timeframe)
-                  });
-                }
-                const lastIdx = json.t.length - 1;
-                const lastTime = new Date(json.t[lastIdx] * 1000);
-                if (points.length && points[points.length - 1].time.getTime() !== lastTime.getTime()) {
-                  points.push({
-                    time: lastTime,
-                    open: Math.round(Number(json.o ? json.o[lastIdx] : json.c[lastIdx]) / 10),
-                    high: Math.round(Number(json.h ? json.h[lastIdx] : json.c[lastIdx]) / 10),
-                    low: Math.round(Number(json.l ? json.l[lastIdx] : json.c[lastIdx]) / 10),
-                    close: Math.round(Number(json.c[lastIdx]) / 10),
-                    price: Math.round(Number(json.c[lastIdx]) / 10),
-                    volume: Math.round(Number(json.v ? json.v[lastIdx] : 0)),
-                    label: this.formatTimeLabel(lastTime, timeframe)
-                  });
-                }
-                this.historyCache.set(cacheKey, points);
-                return points;
-              }
-            }
-          }
-        } catch (err) {
-          console.warn('Ramzinex UDF fetch error:', err.message);
-        }
-      }
-
-      if (this.historyCache.has(cacheKey) && this.historyCache.get(cacheKey).length > 0) {
-        return this.historyCache.get(cacheKey);
-      }
-
-      const emptyRamz = [];
-      emptyRamz.noData = true;
-      emptyRamz.source = 'ramzinex';
-      emptyRamz.message = 'داده‌های تاریخچه رمزینکس در دسترس نیست';
-      return emptyRamz;
-    }
-
-    // 5. When source is TetherLand:
-    if (sourceId === 'tetherland') {
-      if (this.historyCache.has(cacheKey) && this.historyCache.get(cacheKey).length > 0) {
-        return this.historyCache.get(cacheKey);
-      }
-
+    if (endpointDef && isLocal) {
       try {
-        let tUrl = '';
-        if (timeframe === '1H' || timeframe === '24H') {
-          tUrl = 'https://service.tetherland.com/api/v5/chart?rate=1&mode=m';
-        } else if (timeframe === '7D') {
-          tUrl = 'https://service.tetherland.com/api/v5/chart?rate=7&mode=h';
-        } else if (timeframe === '30D') {
-          tUrl = 'https://service.tetherland.com/api/v5/chart?rate=30&mode=h';
-        } else if (timeframe === '1Y') {
-          tUrl = 'https://service.tetherland.com/api/v5/chart?rate=365&mode=d';
-        }
-
-        if (tUrl) {
-          const fetchUrl = isLocal ? (this.getProxyUrl(tUrl) || tUrl) : tUrl;
+        const tfMap = {
+          '1H': { resolution: '1', sec: 3600, countback: 60 },
+          '24H': { resolution: '15', sec: 86400, countback: 96 },
+          '7D': { resolution: '60', sec: 7 * 86400, countback: 168 },
+          '30D': { resolution: '240', sec: 30 * 86400, countback: 180 },
+          '1Y': { resolution: '1D', sec: 365 * 86400, countback: 365 }
+        };
+        const cfg = tfMap[timeframe] || { resolution: '60', sec: 86400, countback: 100 };
+        const now = Math.floor(Date.now() / 1000);
+        const from = now - cfg.sec;
+        const targetUrl = endpointDef.url(cfg.resolution, from, now, cfg.countback);
+        const proxyUrl = this.getProxyUrl(targetUrl);
+        if (proxyUrl) {
           const controller = new AbortController();
-          const timeout = setTimeout(() => controller.abort(), 3000);
-          const res = await fetch(fetchUrl, { signal: controller.signal });
+          const timeout = setTimeout(() => controller.abort(), 2500);
+          const res = await fetch(proxyUrl, { signal: controller.signal });
           clearTimeout(timeout);
           if (res.ok) {
-            const json = await res.json();
-            if (json.data && Array.isArray(json.data.prices) && json.data.prices.length > 0) {
-              const raw = [...json.data.prices].reverse();
-              const parsed = [];
-              let lastTime = 0;
-              for (const item of raw) {
-                const s = item.datetime.trim();
-                let t = 0;
-                if (s.includes(' ')) {
-                  const parts = s.split(' ');
-                  let tm = parts[1];
-                  if (tm.length === 2) tm = tm + ':00';
-                  t = new Date(`${parts[0]}T${tm}:00+03:30`).getTime();
-                } else {
-                  t = new Date(`${s}T00:00:00+03:30`).getTime();
-                }
-                if (t > lastTime) {
-                  parsed.push({ time: t, price: Math.round(Number(item.price)) });
-                  lastTime = t;
-                }
+            const data = await res.json();
+            const raw = this.parseCandleBars(data, { divisor: endpointDef.divisor, timeframe });
+            if (raw.length > 0) {
+              const maxBars = timeframe === '1Y' ? 400 : 140;
+              const points = this.consolidateCandles(raw, maxBars);
+              this.historyCache.set(cacheKey, points);
+              if (sourceId === 'wallex') {
+                this.historyCache.set(`wallex_${timeframe}`, points);
               }
-
-              if (parsed.length > 0) {
-                let points = [];
-                if (timeframe === '1H') {
-                  const curNow = Date.now();
-                  const oneHourAgo = curNow - 3600 * 1000;
-                  let curPrice = parsed[0].price;
-                  for (const p of parsed) {
-                    if (p.time <= oneHourAgo) curPrice = p.price;
-                  }
-                  for (let m = 60; m >= 0; m--) {
-                    const t = Math.floor((curNow - m * 60000) / 60000) * 60000;
-                    const applicable = parsed.filter(p => p.time <= t);
-                    const pVal = applicable.length > 0 ? applicable[applicable.length - 1].price : curPrice;
-                    const d = new Date(t);
-                    points.push({
-                      time: d,
-                      open: pVal,
-                      high: pVal,
-                      low: pVal,
-                      close: pVal,
-                      price: pVal,
-                      volume: 0,
-                      label: this.formatTimeLabel(d, timeframe)
-                    });
-                  }
-                } else {
-                  const step = Math.max(1, Math.floor(parsed.length / 140));
-                  for (let i = 0; i < parsed.length; i += step) {
-                    const item = parsed[i];
-                    const prevItem = i > 0 ? parsed[i - 1] : item;
-                    const d = new Date(item.time);
-                    points.push({
-                      time: d,
-                      open: prevItem.price,
-                      high: Math.max(prevItem.price, item.price),
-                      low: Math.min(prevItem.price, item.price),
-                      close: item.price,
-                      price: item.price,
-                      volume: 0,
-                      label: this.formatTimeLabel(d, timeframe)
-                    });
-                  }
-                  const latestRaw = parsed[parsed.length - 1];
-                  if (points.length > 0 && points[points.length - 1].time.getTime() !== latestRaw.time) {
-                    const prev = points[points.length - 1];
-                    const d = new Date(latestRaw.time);
-                    points.push({
-                      time: d,
-                      open: prev.close,
-                      high: Math.max(prev.close, latestRaw.price),
-                      low: Math.min(prev.close, latestRaw.price),
-                      close: latestRaw.price,
-                      price: latestRaw.price,
-                      volume: 0,
-                      label: this.formatTimeLabel(d, timeframe)
-                    });
-                  }
-                }
-
-                if (points.length > 0) {
-                  this.historyCache.set(cacheKey, points);
-                  return points;
-                }
-              }
+              return points;
             }
           }
         }
       } catch (err) {
-        console.warn('TetherLand chart fetch error:', err.message);
+        console.warn(`[History] Fetch error for ${sourceId}:`, err.message);
       }
-
-      if (this.historyCache.has(cacheKey) && this.historyCache.get(cacheKey).length > 0) {
-        return this.historyCache.get(cacheKey);
-      }
-
-      const emptyTether = [];
-      emptyTether.noData = true;
-      emptyTether.source = 'tetherland';
-      emptyTether.message = 'داده‌های تاریخچه تترلند در دسترس نیست';
-      return emptyTether;
     }
 
-    // 6. When source is Tabdeal:
-    if (sourceId === 'tabdeal') {
-      if (this.historyCache.has(cacheKey) && this.historyCache.get(cacheKey).length > 0) {
-        return this.historyCache.get(cacheKey);
-      }
-
-      if (isLocal) {
-        try {
-          const tabTfMap = {
-            '1H': { resolution: '1', sec: 3600, countback: 60 },
-            '24H': { resolution: '15', sec: 86400, countback: 96 },
-            '7D': { resolution: '60', sec: 7 * 86400, countback: 168 },
-            '30D': { resolution: '240', sec: 30 * 86400, countback: 180 },
-            '1Y': { resolution: '1D', sec: 365 * 86400, countback: 365 }
-          };
-          const tcfg = tabTfMap[timeframe] || { resolution: '60', sec: 86400, countback: 96 };
-          const tfrom = now - tcfg.sec;
-          const targetUrl = `https://api-web.tabdeal.org/r/plots/history/?first_currency_symbol=USDT&second_currency_symbol=IRT&from=${tfrom}&to=${now}&resolution=${tcfg.resolution}&countback=${tcfg.countback}&symbol=USDT_IRT`;
-          const proxyUrl = this.getProxyUrl(targetUrl);
-          if (proxyUrl) {
-            const controller = new AbortController();
-            const timeout = setTimeout(() => controller.abort(), 2500);
-            const res = await fetch(proxyUrl, { signal: controller.signal });
-            clearTimeout(timeout);
-            if (res.ok) {
-              const json = await res.json();
-              if (json && Array.isArray(json.data) && json.data.length > 0) {
-                const raw = json.data;
-                const points = [];
-                const step = Math.max(1, Math.floor(raw.length / 140));
-                for (let i = 0; i < raw.length; i += step) {
-                  const item = raw[i];
-                  const d = new Date(item.time * 1000);
-                  points.push({
-                    time: d,
-                    open: Math.round(Number(item.open)),
-                    high: Math.round(Number(item.high)),
-                    low: Math.round(Number(item.low)),
-                    close: Math.round(Number(item.close)),
-                    price: Math.round(Number(item.close)),
-                    volume: Math.round(Number(item.volume || 0)),
-                    label: this.formatTimeLabel(d, timeframe)
-                  });
-                }
-                const lastIdx = raw.length - 1;
-                const lastTime = new Date(raw[lastIdx].time * 1000);
-                if (points.length && points[points.length - 1].time.getTime() !== lastTime.getTime()) {
-                  const last = raw[lastIdx];
-                  points.push({
-                    time: lastTime,
-                    open: Math.round(Number(last.open)),
-                    high: Math.round(Number(last.high)),
-                    low: Math.round(Number(last.low)),
-                    close: Math.round(Number(last.close)),
-                    price: Math.round(Number(last.close)),
-                    volume: Math.round(Number(last.volume || 0)),
-                    label: this.formatTimeLabel(lastTime, timeframe)
-                  });
-                }
-                this.historyCache.set(cacheKey, points);
-                return points;
-              }
-            }
-          }
-        } catch (err) {
-          console.warn('Tabdeal history fetch error:', err.message);
-        }
-      }
-
-      if (this.historyCache.has(cacheKey) && this.historyCache.get(cacheKey).length > 0) {
-        return this.historyCache.get(cacheKey);
-      }
-
-      const emptyTab = [];
-      emptyTab.noData = true;
-      emptyTab.source = 'tabdeal';
-      emptyTab.message = 'داده‌های تاریخچه تبدیل در دسترس نیست';
-      return emptyTab;
+    // 2. Secondary fallback from snapshot cache
+    const fallbackKey = sourceId === 'wallex' ? timeframe : `${sourceId}_${timeframe}`;
+    if (this.historyCache.has(fallbackKey) && this.historyCache.get(fallbackKey).length > 0) {
+      return this.historyCache.get(fallbackKey);
     }
-
-    // 7. When source is Exir:
-    if (sourceId === 'exir') {
-      if (this.historyCache.has(cacheKey) && this.historyCache.get(cacheKey).length > 0) {
-        return this.historyCache.get(cacheKey);
-      }
-
-      if (isLocal) {
-        try {
-          const exirTfMap = {
-            '1H': { resolution: '1', sec: 3600 },
-            '24H': { resolution: '15', sec: 86400 },
-            '7D': { resolution: '60', sec: 7 * 86400 },
-            '30D': { resolution: '240', sec: 30 * 86400 },
-            '1Y': { resolution: '1D', sec: 365 * 86400 }
-          };
-          const ecfg = exirTfMap[timeframe] || { resolution: '60', sec: 86400 };
-          const efrom = now - ecfg.sec;
-          const targetUrl = `https://api.exir.io/v2/chart?symbol=usdt-irt&resolution=${ecfg.resolution}&from=${efrom}&to=${now}`;
-          const proxyUrl = this.getProxyUrl(targetUrl);
-          if (proxyUrl) {
-            const controller = new AbortController();
-            const timeout = setTimeout(() => controller.abort(), 2500);
-            const res = await fetch(proxyUrl, { signal: controller.signal });
-            clearTimeout(timeout);
-            if (res.ok) {
-              const data = await res.json();
-              if (Array.isArray(data) && data.length > 0) {
-                const filtered = data.filter(c => {
-                  const t = Math.floor(new Date(c.time).getTime() / 1000);
-                  return t >= efrom && t <= now + 300;
-                });
-                const points = [];
-                const step = Math.max(1, Math.floor(filtered.length / 140));
-                for (let i = 0; i < filtered.length; i += step) {
-                  const item = filtered[i];
-                  const d = new Date(item.time);
-                  points.push({
-                    time: d,
-                    open: Math.round(Number(item.open)),
-                    high: Math.round(Number(item.high)),
-                    low: Math.round(Number(item.low)),
-                    close: Math.round(Number(item.close)),
-                    price: Math.round(Number(item.close)),
-                    volume: Math.round(Number(item.volume || 0)),
-                    label: this.formatTimeLabel(d, timeframe)
-                  });
-                }
-                const lastIdx = filtered.length - 1;
-                if (lastIdx >= 0) {
-                  const last = filtered[lastIdx];
-                  const lastTime = new Date(last.time);
-                  if (points.length && points[points.length - 1].time.getTime() !== lastTime.getTime()) {
-                    points.push({
-                      time: lastTime,
-                      open: Math.round(Number(last.open)),
-                      high: Math.round(Number(last.high)),
-                      low: Math.round(Number(last.low)),
-                      close: Math.round(Number(last.close)),
-                      price: Math.round(Number(last.close)),
-                      volume: Math.round(Number(last.volume || 0)),
-                      label: this.formatTimeLabel(lastTime, timeframe)
-                    });
-                  }
-                }
-                this.historyCache.set(cacheKey, points);
-                return points;
-              }
-            }
-          }
-        } catch (err) {
-          console.warn('Exir chart fetch error:', err.message);
-        }
-      }
-
-      if (this.historyCache.has(cacheKey) && this.historyCache.get(cacheKey).length > 0) {
-        return this.historyCache.get(cacheKey);
-      }
-
-      const emptyExir = [];
-      emptyExir.noData = true;
-      emptyExir.source = 'exir';
-      emptyExir.message = 'داده‌های تاریخچه اکسیر در دسترس نیست';
-      return emptyExir;
-    }
-
-    // 8. When source is Bitpin:
-    if (sourceId === 'bitpin') {
-      if (this.historyCache.has(cacheKey) && this.historyCache.get(cacheKey).length > 0) {
-        return this.historyCache.get(cacheKey);
-      }
-
-      try {
-        const bpTfMap = {
-          '1H': { resolution: '1', sec: 3600 },
-          '24H': { resolution: '15', sec: 86400 },
-          '7D': { resolution: '60', sec: 7 * 86400 },
-          '30D': { resolution: '240', sec: 30 * 86400 },
-          '1Y': { resolution: '1D', sec: 365 * 86400 }
-        };
-        const bcfg = bpTfMap[timeframe] || { resolution: '15', sec: 86400 };
-        const bfrom = now - bcfg.sec;
-        const targetUrl = `https://api.bitpin.ir/v1/mkt/tv/get_bars/?symbol=USDT_IRT&res=${bcfg.resolution}&from=${bfrom}&to=${now}`;
-        const fetchUrl = isLocal ? (this.getProxyUrl(targetUrl) || targetUrl) : targetUrl;
-        const controller = new AbortController();
-        const timeout = setTimeout(() => controller.abort(), 2500);
-        const res = await fetch(fetchUrl, { signal: controller.signal });
-        clearTimeout(timeout);
-        if (res.ok) {
-          const raw = await res.json();
-          if (Array.isArray(raw) && raw.length > 0) {
-            const points = [];
-            const step = Math.max(1, Math.floor(raw.length / 140));
-            for (let i = 0; i < raw.length; i += step) {
-              const item = raw[i];
-              const d = new Date(typeof item.time === 'number' && item.time > 1e11 ? item.time : item.time * 1000);
-              points.push({
-                time: d,
-                open: Math.round(Number(item.open)),
-                high: Math.round(Number(item.high)),
-                low: Math.round(Number(item.low)),
-                close: Math.round(Number(item.close)),
-                price: Math.round(Number(item.close)),
-                volume: Math.round(Number(item.volume || 0)),
-                label: this.formatTimeLabel(d, timeframe)
-              });
-            }
-            const lastIdx = raw.length - 1;
-            if (lastIdx >= 0) {
-              const last = raw[lastIdx];
-              const lastTime = new Date(typeof last.time === 'number' && last.time > 1e11 ? last.time : last.time * 1000);
-              if (points.length && points[points.length - 1].time.getTime() !== lastTime.getTime()) {
-                points.push({
-                  time: lastTime,
-                  open: Math.round(Number(last.open)),
-                  high: Math.round(Number(last.high)),
-                  low: Math.round(Number(last.low)),
-                  close: Math.round(Number(last.close)),
-                  price: Math.round(Number(last.close)),
-                  volume: Math.round(Number(last.volume || 0)),
-                  label: this.formatTimeLabel(lastTime, timeframe)
-                });
-              }
-            }
-            this.historyCache.set(cacheKey, points);
-            return points;
-          }
-        }
-      } catch (err) {
-        console.warn('Bitpin chart fetch error:', err.message);
-      }
-
-      if (this.historyCache.has(cacheKey) && this.historyCache.get(cacheKey).length > 0) {
-        return this.historyCache.get(cacheKey);
-      }
-
-      const emptyBitpin = [];
-      emptyBitpin.noData = true;
-      emptyBitpin.source = 'bitpin';
-      emptyBitpin.message = 'داده‌های تاریخچه بیت‌پین در دسترس نیست';
-      return emptyBitpin;
+    if (this.historyCache.has(cacheKey) && this.historyCache.get(cacheKey).length > 0) {
+      return this.historyCache.get(cacheKey);
     }
 
     const emptyDefault = [];
     emptyDefault.noData = true;
     emptyDefault.source = sourceId;
+    emptyDefault.message = `داده‌های تاریخچه ${sourceId} در دسترس نیست`;
     return emptyDefault;
   }
 
   formatTimeLabel(date, timeframe) {
     if (timeframe === '1H' || timeframe === '24H') {
-      return date.toLocaleTimeString('en-US', { hour12: false, hour: '2-digit', minute: '2-digit', timeZone: 'Asia/Tehran' });
+      return DATA_DATE_FORMATTERS.time24.format(date);
     }
     if (timeframe === '7D' || timeframe === '30D') {
       try {
-        return new Intl.DateTimeFormat('fa-IR', { month: 'short', day: 'numeric', timeZone: 'Asia/Tehran' }).format(date);
+        return DATA_DATE_FORMATTERS.faMonthDay.format(date);
       } catch (e) {
-        return date.toLocaleDateString('en-US', { month: 'short', day: 'numeric', timeZone: 'Asia/Tehran' });
+        return DATA_DATE_FORMATTERS.enMonthDay.format(date);
       }
     }
     // 1Y timeframe
     try {
-      return new Intl.DateTimeFormat('fa-IR', { year: 'numeric', month: 'short', day: 'numeric', timeZone: 'Asia/Tehran' }).format(date);
+      return DATA_DATE_FORMATTERS.faYearMonth.format(date);
     } catch (e) {
-      return date.toLocaleDateString('en-US', { year: 'numeric', month: 'short', day: 'numeric', timeZone: 'Asia/Tehran' });
+      return DATA_DATE_FORMATTERS.enYearMonth.format(date);
     }
   }
 

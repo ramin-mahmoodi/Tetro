@@ -2,8 +2,6 @@ const http = require('http');
 const https = require('https');
 const fs = require('fs');
 const path = require('path');
-const url = require('url');
-
 const root = path.resolve(__dirname);
 const mimeTypes = {
   '.html': 'text/html; charset=utf-8',
@@ -33,7 +31,7 @@ const server = http.createServer((req, res) => {
   try {
     let parsedUrl;
     try {
-      parsedUrl = url.parse(req.url, true);
+      parsedUrl = new URL(req.url, 'http://127.0.0.1');
     } catch (e) {
       res.writeHead(400, { 'Content-Type': 'text/plain' });
       res.end('Bad Request: Invalid URL');
@@ -42,7 +40,7 @@ const server = http.createServer((req, res) => {
 
     // 1. Local CORS proxy route for testing live Iranian exchange APIs
     if (parsedUrl.pathname === '/proxy') {
-      const targetParam = parsedUrl.query.url;
+      const targetParam = parsedUrl.searchParams.get('url');
       if (!targetParam || typeof targetParam !== 'string') {
         res.writeHead(400, { 'Content-Type': 'application/json', 'Access-Control-Allow-Origin': '*' });
         res.end(JSON.stringify({ error: 'Missing or invalid url query parameter' }));

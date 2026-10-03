@@ -59,11 +59,11 @@
 
         <!-- Vertical Nav Links -->
         <div class="hyp-menu-links">
-          <a href="#" class="active" title="صفحه نخست"><i class="ph ph-house"></i></a>
-          <a href="#chart-section" title="نمودار قیمت"><i class="ph ph-chart-line-up"></i></a>
-          <a href="#exchanges-section" title="نرخ صرافی‌ها"><i class="ph ph-currency-dollar-simple"></i></a>
-          <button class="open-theme-modal" title="تنظیمات تم و اندازه قلم"><i class="ph ph-gear"></i></button>
-          <button class="pwa-install-btn" style="display:none;" title="نصب اپلیکیشن تترو"><i class="ph ph-download-simple"></i></button>
+          <a href="#" class="active" title="صفحه نخست" aria-label="صفحه نخست"><i class="ph ph-house"></i></a>
+          <a href="#chart-section" title="نمودار قیمت" aria-label="نمودار قیمت"><i class="ph ph-chart-line-up"></i></a>
+          <a href="#exchanges-section" title="نرخ صرافی‌ها" aria-label="نرخ صرافی‌ها"><i class="ph ph-currency-dollar-simple"></i></a>
+          <button class="open-theme-modal" title="تنظیمات تم و اندازه قلم" aria-label="تنظیمات تم و اندازه قلم"><i class="ph ph-gear"></i></button>
+          <button class="pwa-install-btn" style="display:none;" title="نصب اپلیکیشن تترو" aria-label="نصب اپلیکیشن تترو"><i class="ph ph-download-simple"></i></button>
         </div>
 
         <div class="hyp-menu-divide"><div></div></div>
@@ -218,7 +218,7 @@
 
               <!-- Controls: Source, Chart Type, Timeframes -->
               <div class="chart-controls">
-                <select class="chart-source-select" id="chart-source-select" title="انتخاب منبع قیمت">
+                <select class="chart-source-select" id="chart-source-select" title="انتخاب منبع قیمت" aria-label="انتخاب منبع قیمت">
                   <option value="aggregate">میانگین بازار</option>
                   <option value="nobitex">نوبیتکس</option>
                   <option value="wallex">والکس</option>
@@ -232,11 +232,11 @@
 
                 <!-- Chart Type Switcher: Candlestick vs Line -->
                 <div class="chart-type-group" role="group" aria-label="نوع نمودار">
-                  <button class="type-btn active" data-type="candlestick" title="نمودار کندل استیک">
+                  <button class="type-btn active" data-type="candlestick" title="نمودار کندل استیک" aria-label="نمودار کندل استیک">
                     <i class="ph ph-chart-bar"></i>
                     <span>کندل</span>
                   </button>
-                  <button class="type-btn" data-type="line" title="نمودار خطی">
+                  <button class="type-btn" data-type="line" title="نمودار خطی" aria-label="نمودار خطی">
                     <i class="ph ph-chart-line"></i>
                     <span>خطی</span>
                   </button>
@@ -245,14 +245,14 @@
                 <!-- Timeframe Switcher: Buttons on Desktop, Dropdown Menu on Mobile -->
                 <div class="timeframe-wrapper">
                   <div class="timeframe-group desktop-tf-group" role="group" aria-label="بازه زمانی">
-                    <button class="tf-btn" data-tf="1H">1H</button>
-                    <button class="tf-btn active" data-tf="24H">24H</button>
-                    <button class="tf-btn" data-tf="7D">7D</button>
-                    <button class="tf-btn" data-tf="30D">30D</button>
-                    <button class="tf-btn" data-tf="1Y">1Y</button>
+                    <button class="tf-btn" data-tf="1H" aria-label="تایم فریم ۱ ساعته">1H</button>
+                    <button class="tf-btn active" data-tf="24H" aria-label="تایم فریم ۲۴ ساعته">24H</button>
+                    <button class="tf-btn" data-tf="7D" aria-label="تایم فریم ۷ روزه">7D</button>
+                    <button class="tf-btn" data-tf="30D" aria-label="تایم فریم ۳۰ روزه">30D</button>
+                    <button class="tf-btn" data-tf="1Y" aria-label="تایم فریم ۱ ساله">1Y</button>
                   </div>
 
-                  <select class="chart-timeframe-select mobile-tf-select" id="chart-timeframe-select" title="بازه زمانی" style="display: none;">
+                  <select class="chart-timeframe-select mobile-tf-select" id="chart-timeframe-select" title="بازه زمانی" aria-label="بازه زمانی نمودار" style="display: none;">
                     <option value="1H">1H</option>
                     <option value="24H" selected>24H</option>
                     <option value="7D">7D</option>
@@ -265,7 +265,9 @@
 
             <!-- Canvas Viewport with Touch Crosshair -->
             <div class="chart-viewport" id="chart-viewport">
-              <canvas class="chart-canvas" id="chart-canvas"></canvas>
+              <canvas class="chart-canvas" id="chart-canvas" role="img" aria-label="نمودار تعاملی قیمت لحظه‌ای تتر">
+                <p>نمودار تعاملی قیمت لحظه‌ای تتر (USDT) بر حسب تومان و ریال در تایم‌فریم‌های مختلف.</p>
+              </canvas>
               <div class="chart-tooltip" id="chart-tooltip"></div>
             </div>
 
@@ -292,8 +294,8 @@
 
               <!-- Filter & Sort Bar -->
               <div class="filter-controls">
-                <input type="text" class="search-input" id="exchange-search" placeholder="جستجوی نام صرافی...">
-                <select class="sort-select" id="exchange-sort" title="مرتب‌سازی صرافی‌ها">
+                <input type="text" class="search-input" id="exchange-search" placeholder="جستجوی نام صرافی..." aria-label="جستجوی نام صرافی">
+                <select class="sort-select" id="exchange-sort" title="مرتب‌سازی صرافی‌ها" aria-label="مرتب‌سازی صرافی‌ها">
                   <option value="best_buy">ارزان‌ترین خرید</option>
                   <option value="best_sell">گران‌ترین فروش</option>
                   <option value="name">بر اساس نام</option>
@@ -302,16 +304,16 @@
             </div>
 
             <!-- Dynamic 1-Row Per Exchange Table Container with 24h Mini Sparklines -->
-            <div class="exchanges-table-container">
-              <div class="exchanges-table-head">
-                <span>صرافی / منبع</span>
-                <span style="text-align:center;">روند ۲۴ ساعته</span>
-                <span>خرید از صرافی</span>
-                <span>فروش به صرافی</span>
-                <span>تغییر ۲۴h</span>
-                <span>کف و سقف ۲۴h</span>
+            <div class="exchanges-table-container" role="table" aria-label="جدول نرخ و مقایسه صرافی‌های تتر">
+              <div class="exchanges-table-head" role="row">
+                <span role="columnheader">صرافی / منبع</span>
+                <span role="columnheader" style="text-align:center;">روند ۲۴ ساعته</span>
+                <span role="columnheader">خرید از صرافی</span>
+                <span role="columnheader">فروش به صرافی</span>
+                <span role="columnheader">تغییر ۲۴h</span>
+                <span role="columnheader">کف و سقف ۲۴h</span>
               </div>
-              <div id="exchanges-table-body">
+              <div id="exchanges-table-body" role="rowgroup">
                 <!-- Dynamically rendered rows: 1 exchange per row via js/ui-renderer.js -->
               </div>
             </div>
@@ -327,19 +329,19 @@
        MOBILE BOTTOM NAVIGATION (Touch targets >= 48px)
        ====================================================================== -->
   <nav class="mobile-nav" aria-label="ناوبری لمسی موبایل">
-    <button class="mobile-nav-item active" data-target="home">
+    <button class="mobile-nav-item active" data-target="home" aria-label="صفحه اصلی">
       <i class="ph ph-house"></i>
       <span>خانه</span>
     </button>
-    <button class="mobile-nav-item" data-target="chart">
+    <button class="mobile-nav-item" data-target="chart" aria-label="نمودار قیمت">
       <i class="ph ph-chart-line-up"></i>
       <span>چارت</span>
     </button>
-    <button class="mobile-nav-item" data-target="exchanges">
+    <button class="mobile-nav-item" data-target="exchanges" aria-label="جدول صرافی‌ها">
       <i class="ph ph-currency-dollar-simple"></i>
       <span>صرافی‌ها</span>
     </button>
-    <button class="mobile-nav-item" data-target="themes">
+    <button class="mobile-nav-item" data-target="themes" aria-label="پالت‌های رنگی و تنظیمات">
       <i class="ph ph-palette"></i>
       <span>تم‌ها</span>
     </button>
@@ -348,14 +350,14 @@
   <!-- ======================================================================
        VISUAL THEME DRAWER & SETTINGS MODAL (58 Themes, 3 Modes, Font Sizer)
        ====================================================================== -->
-  <div class="theme-modal-backdrop" id="theme-modal" role="dialog" aria-modal="true" aria-label="تنظیمات تم و ظاهر">
-    <div class="theme-modal">
+  <div class="theme-modal-backdrop" id="theme-modal" role="dialog" aria-modal="true" aria-labelledby="theme-modal-title">
+    <div class="theme-modal" id="theme-modal-dialog">
       <div class="theme-modal-header">
-        <div class="theme-modal-title">
+        <div class="theme-modal-title" id="theme-modal-title">
           <i class="ph-duotone ph-sliders"></i>
           <span>تنظیمات ظاهر و تم‌ها // <b>۵۸ پالت رنگی</b></span>
         </div>
-        <button class="theme-modal-close" id="theme-modal-close" title="بستن (Escape)">
+        <button class="theme-modal-close" id="theme-modal-close" title="بستن (Escape)" aria-label="بستن پنجره تنظیمات">
           <i class="ph ph-x"></i>
         </button>
       </div>
@@ -365,15 +367,15 @@
         <div class="mode-switches-box">
           <h4>حالت پایه (Base Mode)</h4>
           <div class="mode-buttons-row">
-            <button class="mode-btn" data-mode="1">
+            <button class="mode-btn" data-mode="1" aria-label="حالت پایه روشن (Light)">
               <i class="ph ph-sun"></i>
               <span>Light</span>
             </button>
-            <button class="mode-btn" data-mode="2">
+            <button class="mode-btn" data-mode="2" aria-label="حالت پایه سپیا (Sepia)">
               <i class="ph ph-coffee"></i>
               <span>Sepia</span>
             </button>
-            <button class="mode-btn" data-mode="3">
+            <button class="mode-btn" data-mode="3" aria-label="حالت پایه تاریک (Dark)">
               <i class="ph ph-moon"></i>
               <span>Dark</span>
             </button>
@@ -381,16 +383,16 @@
 
           <!-- Addon Controls: Contrast & Font Sizer -->
           <div class="addon-toggles-row">
-            <button class="contrast-toggle-btn" id="contrast-toggle">
+            <button class="contrast-toggle-btn" id="contrast-toggle" aria-label="حالت کنتراست ملایم">
               <i class="ph ph-circle-half"></i>
               <span>حالت کنتراست ملایم</span>
             </button>
 
             <div class="font-size-controls">
               <span>اندازه قلم:</span>
-              <button class="font-btn" id="font-up" title="بزرگ‌تر">+</button>
-              <button class="font-btn" id="font-reset" title="پیش‌فرض">/</button>
-              <button class="font-btn" id="font-down" title="کوچک‌تر">-</button>
+              <button class="font-btn" id="font-up" title="بزرگ‌تر" aria-label="افزایش اندازه قلم">+</button>
+              <button class="font-btn" id="font-reset" title="پیش‌فرض" aria-label="اندازه قلم پیش‌فرض">/</button>
+              <button class="font-btn" id="font-down" title="کوچک‌تر" aria-label="کاهش اندازه قلم">-</button>
             </div>
           </div>
         </div>

@@ -168,8 +168,8 @@ class ThemeEngine {
     container.innerHTML = '';
 
     const categories = [
-      { key: 'basic', label: 'Basic Palettes (8)' },
-      { key: 'premium', label: 'Premium Palettes (22)' },
+      { key: 'basic', label: 'Basic Palettes (9)' },
+      { key: 'premium', label: 'Premium Palettes (21)' },
       { key: 'special', label: 'Special & Neon (9)' },
       { key: 'monochrome', label: 'Monochrome & Dark (11)' },
       { key: 'holiday', label: 'Holiday & Seasonal (8)' }
@@ -192,8 +192,9 @@ class ThemeEngine {
         item.className = `palette-swatch-item ${theme.id === this.currentPalette ? 'active' : ''}`;
         item.dataset.palette = theme.id;
         item.type = 'button';
+        item.setAttribute('aria-label', `انتخاب پالت ${theme.name}`);
         item.innerHTML = `
-          <div class="swatch-color-bars">
+          <div class="swatch-color-bars" aria-hidden="true">
             <div class="swatch-bar" style="background-color: ${theme.c1}"></div>
             <div class="swatch-bar" style="background-color: ${theme.c2}"></div>
           </div>
@@ -206,6 +207,34 @@ class ThemeEngine {
       groupDiv.appendChild(grid);
       container.appendChild(groupDiv);
     });
+  }
+
+  openModal(triggerEl = null) {
+    const modal = document.getElementById('theme-modal');
+    if (!modal) return;
+    this.modalTriggerEl = triggerEl || document.activeElement;
+    modal.classList.add('open');
+    const closeBtn = document.getElementById('theme-modal-close');
+    if (closeBtn) closeBtn.focus();
+  }
+
+  closeModal() {
+    const modal = document.getElementById('theme-modal');
+    if (!modal || !modal.classList.contains('open')) return;
+    modal.classList.remove('open');
+    if (this.modalTriggerEl && typeof this.modalTriggerEl.focus === 'function') {
+      this.modalTriggerEl.focus();
+    }
+  }
+
+  toggleModal(triggerEl = null) {
+    const modal = document.getElementById('theme-modal');
+    if (!modal) return;
+    if (modal.classList.contains('open')) {
+      this.closeModal();
+    } else {
+      this.openModal(triggerEl);
+    }
   }
 
   setupListeners() {
@@ -234,17 +263,39 @@ class ThemeEngine {
     const openBtns = document.querySelectorAll('.open-theme-modal');
     const closeBtn = document.getElementById('theme-modal-close');
 
-    openBtns.forEach(b => b.addEventListener('click', () => {
-      if (modal) modal.classList.add('open');
-    }));
+    openBtns.forEach(b => b.addEventListener('click', () => this.openModal(b)));
 
-    if (closeBtn && modal) {
-      closeBtn.addEventListener('click', () => modal.classList.remove('open'));
+    if (closeBtn) {
+      closeBtn.addEventListener('click', () => this.closeModal());
     }
 
     if (modal) {
       modal.addEventListener('click', (e) => {
-        if (e.target === modal) modal.classList.remove('open');
+        if (e.target === modal) this.closeModal();
+      });
+
+      // Accessibility Focus Trap: Keep keyboard focus trapped inside the modal while open
+      modal.addEventListener('keydown', (e) => {
+        if (e.key === 'Tab') {
+          const focusable = Array.from(modal.querySelectorAll(
+            'button:not([disabled]), [tabindex]:not([tabindex="-1"]), select:not([disabled]), input:not([disabled])'
+          ));
+          if (focusable.length === 0) return;
+          const first = focusable[0];
+          const last = focusable[focusable.length - 1];
+
+          if (e.shiftKey) {
+            if (document.activeElement === first) {
+              e.preventDefault();
+              last.focus();
+            }
+          } else {
+            if (document.activeElement === last) {
+              e.preventDefault();
+              first.focus();
+            }
+          }
+        }
       });
     }
   }

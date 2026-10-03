@@ -36,8 +36,7 @@ function setupMobileNav() {
 
       const target = item.dataset.target;
       if (target === 'themes') {
-        const modal = document.getElementById('theme-modal');
-        if (modal) modal.classList.add('open');
+        if (window.themeEngine) window.themeEngine.openModal(item);
       } else if (target === 'chart') {
         const chartEl = document.getElementById('chart-section');
         if (chartEl) chartEl.scrollIntoView({ behavior: 'smooth', block: 'start' });
@@ -62,11 +61,9 @@ function setupKeyboardShortcuts() {
 
     // Use e.code to work seamlessly across English, Persian, and all keyboard layouts
     if (e.code === 'KeyT') {
-      const modal = document.getElementById('theme-modal');
-      if (modal) modal.classList.toggle('open');
+      if (window.themeEngine) window.themeEngine.toggleModal();
     } else if (e.code === 'Escape' || e.key === 'Escape') {
-      const modal = document.getElementById('theme-modal');
-      if (modal) modal.classList.remove('open');
+      if (window.themeEngine) window.themeEngine.closeModal();
     } else if (e.code === 'Digit1' || e.code === 'Numpad1') {
       if (window.themeEngine) window.themeEngine.applyMode(1);
     } else if (e.code === 'Digit2' || e.code === 'Numpad2') {

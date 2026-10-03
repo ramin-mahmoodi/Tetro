@@ -4,6 +4,19 @@
    Clean flat layout without spread column
    ========================================================================== */
 
+function normalizePersianText(str) {
+  if (!str) return '';
+  return String(str)
+    .toLowerCase()
+    .replace(/[\u064A\u0649]/g, '\u06CC') // Arabic Yeh / Alef Maksura -> Persian Yeh (ی)
+    .replace(/\u0643/g, '\u06A9') // Arabic Kaf -> Persian Kaf (ک)
+    .replace(/[\u0622\u0623\u0625]/g, '\u0627') // Alef with Madda/Hamza -> Alef (ا)
+    .replace(/\u0629/g, '\u0647') // Teh Marbuta -> Heh (ه)
+    .replace(/[\u200C\u200D\u200E\u200F\u00A0]/g, '') // Remove ZWNJ, ZWJ, non-breaking space
+    .replace(/[\s\-_]/g, '') // remove whitespace and dashes
+    .trim();
+}
+
 class UIRenderer {
   constructor() {
     this.searchQuery = '';
@@ -41,6 +54,12 @@ class UIRenderer {
   }
 
   setupControls() {
+    // Sync initial currency button states with persisted currency preference
+    const activeCurrency = window.dataAdapter ? window.dataAdapter.currentCurrency : 'TOMAN';
+    document.querySelectorAll('.currency-btn').forEach(b => {
+      b.classList.toggle('active', b.dataset.currency === activeCurrency);
+    });
+
     // Search filter
     const searchInput = document.getElementById('exchange-search');
     if (searchInput) {
@@ -124,11 +143,12 @@ class UIRenderer {
 
     let list = window.dataAdapter.getExchangeRates();
 
-    // Filter by query
+    // Filter by query (with Persian & Arabic character normalization)
     if (this.searchQuery) {
+      const q = normalizePersianText(this.searchQuery);
       list = list.filter(item =>
-        item.name.toLowerCase().includes(this.searchQuery) ||
-        item.faName.includes(this.searchQuery)
+        normalizePersianText(item.name).includes(q) ||
+        normalizePersianText(item.faName).includes(q)
       );
     }
 
@@ -156,6 +176,8 @@ class UIRenderer {
       const row = document.createElement('div');
       row.className = 'exchange-row';
       row.id = `row-${ex.id}`;
+      row.setAttribute('role', 'row');
+      row.setAttribute('tabindex', '0');
 
       const chVal = this.formatChange(ex.change24h);
       let changeBadgeHtml = '';
@@ -182,10 +204,12 @@ class UIRenderer {
       const highFormatted = window.dataAdapter.formatPriceNum(ex.high24h);
       const lowFormatted = window.dataAdapter.formatPriceNum(ex.low24h);
 
+      row.setAttribute('aria-label', `${ex.faName} (${ex.name})، خرید: ${buyFormatted} ${currUnit}، فروش: ${sellFormatted} ${currUnit}`);
+
       row.innerHTML = `
         <!-- Col 1: Exchange Info -->
-        <div class="ex-col-info">
-          <div class="ex-avatar">${ex.name.substring(0, 2).toUpperCase()}</div>
+        <div class="ex-col-info" role="cell">
+          <div class="ex-avatar" aria-hidden="true">${ex.name.substring(0, 2).toUpperCase()}</div>
           <div class="ex-name-box">
             <div class="ex-name-row">
               <span class="ex-name-eng" dir="ltr">${ex.name}</span>
@@ -196,36 +220,36 @@ class UIRenderer {
         </div>
 
         <!-- Col 2: 24h Mini Sparkline Chart -->
-        <div class="ex-col-sparkline">
-          <canvas class="sparkline-canvas" id="sparkline-${ex.id}"></canvas>
+        <div class="ex-col-sparkline" role="cell">
+          <canvas class="sparkline-canvas" id="sparkline-${ex.id}" role="img" aria-label="روند ۲۴ ساعته ${ex.faName}"></canvas>
         </div>
 
         <!-- Col 3: Buy Price -->
-        <div class="ex-col-rate ex-col-buy">
+        <div class="ex-col-rate ex-col-buy" role="cell">
           <span class="rate-label">خرید:</span>
           <span class="rate-num" id="rate-buy-${ex.id}" dir="ltr">${buyFormatted}</span>
           <span class="rate-sub">${currUnit}</span>
         </div>
 
         <!-- Col 4: Sell Price -->
-        <div class="ex-col-rate ex-col-sell">
+        <div class="ex-col-rate ex-col-sell" role="cell">
           <span class="rate-label">فروش:</span>
           <span class="rate-num" id="rate-sell-${ex.id}" dir="ltr">${sellFormatted}</span>
           <span class="rate-sub">${currUnit}</span>
         </div>
 
         <!-- Col 5: 24h Change -->
-        <div class="ex-col-change">
+        <div class="ex-col-change" role="cell">
           ${changeBadgeHtml}
         </div>
 
         <!-- Col 6: 24h High / Low Range -->
-        <div class="ex-col-range">
+        <div class="ex-col-range" role="cell">
           <div class="range-stat range-low">
             <span class="range-lbl">کف:</span>
             <span class="range-val" dir="ltr">${lowFormatted}</span>
           </div>
-          <span class="range-divider">~</span>
+          <span class="range-divider" aria-hidden="true">~</span>
           <div class="range-stat range-high">
             <span class="range-lbl">سقف:</span>
             <span class="range-val" dir="ltr">${highFormatted}</span>

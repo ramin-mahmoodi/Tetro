@@ -15,7 +15,7 @@ permissions:
 
 concurrency:
   group: "pages"
-  cancel-in-progress: true
+  cancel-in-progress: false
 
 jobs:
   deploy:
@@ -32,6 +32,12 @@ jobs:
         with:
           node-version: '22'
 
+      - name: Run unit tests
+        run: npm test
+
+      - name: Run syntax and lint checks
+        run: npm run lint
+
       - name: Fetch and compile market data
         run: node scripts/fetch-market-data.js
         env:
@@ -46,13 +52,16 @@ jobs:
           git add data/market.json
           git diff --quiet && git diff --staged --quiet || (git commit -m "Auto-sync market data [skip ci]" && git push)
 
+      - name: Build production bundle
+        run: npm run build
+
       - name: Setup Pages
         uses: actions/configure-pages@v5
 
       - name: Upload Artifact
         uses: actions/upload-pages-artifact@v3
         with:
-          path: '.'
+          path: 'dist'
 
       - name: Deploy to GitHub Pages
         id: deployment

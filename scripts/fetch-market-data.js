@@ -337,44 +337,74 @@ function computeAggregateCandles(exchangeCandlesMap, tf) {
   });
 }
 
-async function fetchWallexCandles(timeframe) {
-  const tfMap = {
-    '1H': { resolution: '1', sec: 3600 },
-    '24H': { resolution: '15', sec: 86400 },
-    '7D': { resolution: '60', sec: 7 * 86400 },
-    '30D': { resolution: '240', sec: 30 * 86400 },
-    '1Y': { resolution: '1D', sec: 365 * 86400 }
-  };
-  const cfg = tfMap[timeframe];
-  if (!cfg) return null;
+const COMMON_TF_MAP = {
+  '1H': { resolution: '1', res: '1', sec: 3600, countback: 60 },
+  '24H': { resolution: '15', res: '15', sec: 86400, countback: 96 },
+  '7D': { resolution: '60', res: '60', sec: 7 * 86400, countback: 168 },
+  '30D': { resolution: '240', res: '240', sec: 30 * 86400, countback: 180 },
+  '1Y': { resolution: '1D', res: '1D', sec: 365 * 86400, countback: 365 }
+};
 
+function parseCandlesFromUdf(json, { divisor = 1, timeframe = '24H' } = {}) {
+  if (!json || json.s !== 'ok' || !Array.isArray(json.t) || !Array.isArray(json.c) || json.t.length === 0) {
+    return null;
+  }
+  const raw = [];
+  for (let i = 0; i < json.t.length; i++) {
+    const o = Math.round(Number(json.o ? json.o[i] : json.c[i]) / divisor);
+    const h = Math.round(Number(json.h ? json.h[i] : json.c[i]) / divisor);
+    const l = Math.round(Number(json.l ? json.l[i] : json.c[i]) / divisor);
+    const c = Math.round(Number(json.c[i]) / divisor);
+    raw.push({
+      time: json.t[i] * 1000,
+      open: o,
+      high: Math.max(h, o, c),
+      low: Math.min(l, o, c),
+      close: c,
+      price: c,
+      volume: Math.round(Number(json.v ? json.v[i] : 0))
+    });
+  }
+  const maxBars = timeframe === '1Y' ? 400 : 140;
+  return consolidateCandles(raw, maxBars);
+}
+
+function parseCandlesFromArray(arr, { divisor = 1, timeframe = '24H', timeInMs = false } = {}) {
+  if (!Array.isArray(arr) || arr.length === 0) return null;
+  const raw = [];
+  for (let i = 0; i < arr.length; i++) {
+    const item = arr[i];
+    let rawTime = item.time;
+    if (typeof rawTime === 'string') rawTime = new Date(rawTime).getTime();
+    else if (typeof rawTime === 'number' && !timeInMs && rawTime < 1e11) rawTime *= 1000;
+    const o = Math.round(Number(item.open != null ? item.open : item.close) / divisor);
+    const h = Math.round(Number(item.high != null ? item.high : item.close) / divisor);
+    const l = Math.round(Number(item.low != null ? item.low : item.close) / divisor);
+    const c = Math.round(Number(item.close) / divisor);
+    raw.push({
+      time: rawTime,
+      open: o,
+      high: Math.max(h, o, c),
+      low: Math.min(l, o, c),
+      close: c,
+      price: c,
+      volume: Math.round(Number(item.volume || 0))
+    });
+  }
+  const maxBars = timeframe === '1Y' ? 400 : 140;
+  return consolidateCandles(raw, maxBars);
+}
+
+async function fetchWallexCandles(timeframe) {
+  const cfg = COMMON_TF_MAP[timeframe];
+  if (!cfg) return null;
   const now = Math.floor(Date.now() / 1000);
   const from = now - cfg.sec;
   const url = `https://api.wallex.ir/v1/udf/history?symbol=USDTTMN&resolution=${cfg.resolution}&from=${from}&to=${now}`;
   const json = await safeFetchJson(url);
-
-  if (json && json.s === 'ok' && Array.isArray(json.t) && Array.isArray(json.c) && json.t.length > 0) {
-    const raw = [];
-    for (let i = 0; i < json.t.length; i++) {
-      const o = Math.round(Number(json.o ? json.o[i] : json.c[i]));
-      const h = Math.round(Number(json.h ? json.h[i] : json.c[i]));
-      const l = Math.round(Number(json.l ? json.l[i] : json.c[i]));
-      const c = Math.round(Number(json.c[i]));
-      raw.push({
-        time: json.t[i] * 1000,
-        open: o,
-        high: Math.max(h, o, c),
-        low: Math.min(l, o, c),
-        close: c,
-        price: c,
-        volume: Math.round(Number(json.v ? json.v[i] : 0))
-      });
-    }
-    const maxBars = timeframe === '1Y' ? 400 : 140;
-    return consolidateCandles(raw, maxBars);
-  }
-  return null;
+  return parseCandlesFromUdf(json, { divisor: 1, timeframe });
 }
+
 
 async function fetchWallexSparkline() {
   const now = Math.floor(Date.now() / 1000);
@@ -410,42 +440,13 @@ async function fetchAbanTetherSparkline() {
 }
 
 async function fetchAbanTetherCandles(timeframe) {
-  const tfMap = {
-    '1H': { resolution: '1', sec: 3600, countback: 60 },
-    '24H': { resolution: '15', sec: 86400, countback: 96 },
-    '7D': { resolution: '60', sec: 7 * 86400, countback: 168 },
-    '30D': { resolution: '240', sec: 30 * 86400, countback: 180 },
-    '1Y': { resolution: '1D', sec: 365 * 86400, countback: 365 }
-  };
-  const cfg = tfMap[timeframe];
+  const cfg = COMMON_TF_MAP[timeframe];
   if (!cfg) return null;
-
   const now = Math.floor(Date.now() / 1000);
   const from = now - cfg.sec;
   const url = `https://api.abantether.com/otc_reporting/tradingview/history?symbol=USDT%2FIRT&resolution=${cfg.resolution}&from=${from}&to=${now}&countback=${cfg.countback}`;
   const json = await safeFetchJson(url);
-
-  if (json && json.s === 'ok' && Array.isArray(json.t) && Array.isArray(json.c) && json.t.length > 0) {
-    const raw = [];
-    for (let i = 0; i < json.t.length; i++) {
-      const o = Math.round(Number(json.o ? json.o[i] : json.c[i]));
-      const h = Math.round(Number(json.h ? json.h[i] : json.c[i]));
-      const l = Math.round(Number(json.l ? json.l[i] : json.c[i]));
-      const c = Math.round(Number(json.c[i]));
-      raw.push({
-        time: json.t[i] * 1000,
-        open: o,
-        high: Math.max(h, o, c),
-        low: Math.min(l, o, c),
-        close: c,
-        price: c,
-        volume: Math.round(Number(json.v ? json.v[i] : 0))
-      });
-    }
-    const maxBars = timeframe === '1Y' ? 400 : 140;
-    return consolidateCandles(raw, maxBars);
-  }
-  return null;
+  return parseCandlesFromUdf(json, { divisor: 1, timeframe });
 }
 
 async function fetchRamzinexSparkline() {
@@ -460,42 +461,13 @@ async function fetchRamzinexSparkline() {
 }
 
 async function fetchRamzinexCandles(timeframe) {
-  const tfMap = {
-    '1H': { resolution: '1', sec: 3600, countback: 60 },
-    '24H': { resolution: '15', sec: 86400, countback: 96 },
-    '7D': { resolution: '60', sec: 7 * 86400, countback: 168 },
-    '30D': { resolution: '240', sec: 30 * 86400, countback: 180 },
-    '1Y': { resolution: '1D', sec: 365 * 86400, countback: 365 }
-  };
-  const cfg = tfMap[timeframe];
+  const cfg = COMMON_TF_MAP[timeframe];
   if (!cfg) return null;
-
   const now = Math.floor(Date.now() / 1000);
   const from = now - cfg.sec;
   const url = `https://publicapi.ramzinex.ir/exchange/api/v1.0/exchange/chart/tv/v2.0/history?symbol=USDTIRR&resolution=${cfg.resolution}&from=${from}&to=${now}&countback=${cfg.countback}`;
   const json = await safeFetchJson(url);
-
-  if (json && json.s === 'ok' && Array.isArray(json.t) && Array.isArray(json.c) && json.t.length > 0) {
-    const raw = [];
-    for (let i = 0; i < json.t.length; i++) {
-      const o = Math.round(Number(json.o ? json.o[i] : json.c[i]) / 10);
-      const h = Math.round(Number(json.h ? json.h[i] : json.c[i]) / 10);
-      const l = Math.round(Number(json.l ? json.l[i] : json.c[i]) / 10);
-      const c = Math.round(Number(json.c[i]) / 10);
-      raw.push({
-        time: json.t[i] * 1000,
-        open: o,
-        high: Math.max(h, o, c),
-        low: Math.min(l, o, c),
-        close: c,
-        price: c,
-        volume: Math.round(Number(json.v ? json.v[i] : 0))
-      });
-    }
-    const maxBars = timeframe === '1Y' ? 400 : 140;
-    return consolidateCandles(raw, maxBars);
-  }
-  return null;
+  return parseCandlesFromUdf(json, { divisor: 10, timeframe });
 }
 
 function parseTetherlandTime(dtStr) {
@@ -656,42 +628,13 @@ async function fetchTabdealSparkline() {
 }
 
 async function fetchTabdealCandles(timeframe) {
-  const tfMap = {
-    '1H': { resolution: '1', sec: 3600, countback: 60 },
-    '24H': { resolution: '15', sec: 86400, countback: 96 },
-    '7D': { resolution: '60', sec: 7 * 86400, countback: 168 },
-    '30D': { resolution: '240', sec: 30 * 86400, countback: 180 },
-    '1Y': { resolution: '1D', sec: 365 * 86400, countback: 365 }
-  };
-  const cfg = tfMap[timeframe];
+  const cfg = COMMON_TF_MAP[timeframe];
   if (!cfg) return null;
-
   const now = Math.floor(Date.now() / 1000);
   const from = now - cfg.sec;
   const url = `https://api-web.tabdeal.org/r/plots/history/?first_currency_symbol=USDT&second_currency_symbol=IRT&from=${from}&to=${now}&resolution=${cfg.resolution}&countback=${cfg.countback}&symbol=USDT_IRT`;
   const json = await safeFetchJson(url);
-
-  if (json && Array.isArray(json.data) && json.data.length > 0) {
-    const raw = [];
-    for (const item of json.data) {
-      const o = Math.round(Number(item.open));
-      const h = Math.round(Number(item.high));
-      const l = Math.round(Number(item.low));
-      const c = Math.round(Number(item.close));
-      raw.push({
-        time: item.time * 1000,
-        open: o,
-        high: Math.max(h, o, c),
-        low: Math.min(l, o, c),
-        close: c,
-        price: c,
-        volume: Math.round(Number(item.volume || 0))
-      });
-    }
-    const maxBars = timeframe === '1Y' ? 400 : 140;
-    return consolidateCandles(raw, maxBars);
-  }
-  return null;
+  return parseCandlesFromArray(json?.data, { divisor: 1, timeframe });
 }
 
 async function fetchExirPrices() {
@@ -735,48 +678,18 @@ async function fetchExirSparkline() {
 }
 
 async function fetchExirCandles(timeframe) {
-  const tfMap = {
-    '1H': { resolution: '1', sec: 3600 },
-    '24H': { resolution: '15', sec: 86400 },
-    '7D': { resolution: '60', sec: 7 * 86400 },
-    '30D': { resolution: '240', sec: 30 * 86400 },
-    '1Y': { resolution: '1D', sec: 365 * 86400 }
-  };
-  const cfg = tfMap[timeframe];
+  const cfg = COMMON_TF_MAP[timeframe];
   if (!cfg) return null;
-
   const now = Math.floor(Date.now() / 1000);
   const from = now - cfg.sec;
   const url = `https://api.exir.io/v2/chart?symbol=usdt-irt&resolution=${cfg.resolution}&from=${from}&to=${now}`;
   const json = await safeFetchJson(url);
-
-  if (json && Array.isArray(json) && json.length > 0) {
-    const filtered = json.filter(c => {
-      const t = Math.floor(new Date(c.time).getTime() / 1000);
-      return t >= from && t <= now + 300;
-    });
-
-    const raw = [];
-    for (const item of filtered) {
-      const d = new Date(item.time).getTime();
-      const o = Math.round(Number(item.open));
-      const h = Math.round(Number(item.high));
-      const l = Math.round(Number(item.low));
-      const c = Math.round(Number(item.close));
-      raw.push({
-        time: d,
-        open: o,
-        high: Math.max(h, o, c),
-        low: Math.min(l, o, c),
-        close: c,
-        price: c,
-        volume: Math.round(Number(item.volume || 0))
-      });
-    }
-    const maxBars = timeframe === '1Y' ? 400 : 140;
-    return consolidateCandles(raw, maxBars);
-  }
-  return null;
+  if (!Array.isArray(json)) return null;
+  const filtered = json.filter(c => {
+    const t = Math.floor(new Date(c.time).getTime() / 1000);
+    return t >= from && t <= now + 300;
+  });
+  return parseCandlesFromArray(filtered, { divisor: 1, timeframe });
 }
 
 async function fetchBitpinPrices() {
@@ -821,42 +734,13 @@ async function fetchBitpinSparkline() {
 }
 
 async function fetchBitpinCandles(timeframe) {
-  const tfMap = {
-    '1H': { res: '1', sec: 3600 },
-    '24H': { res: '15', sec: 86400 },
-    '7D': { res: '60', sec: 7 * 86400 },
-    '30D': { res: '240', sec: 30 * 86400 },
-    '1Y': { res: '1D', sec: 365 * 86400 }
-  };
-  const cfg = tfMap[timeframe];
+  const cfg = COMMON_TF_MAP[timeframe];
   if (!cfg) return null;
-
   const now = Math.floor(Date.now() / 1000);
   const from = now - cfg.sec;
   const url = `https://api.bitpin.ir/v1/mkt/tv/get_bars/?symbol=USDT_IRT&res=${cfg.res}&from=${from}&to=${now}`;
   const json = await safeFetchJson(url);
-
-  if (Array.isArray(json) && json.length > 0) {
-    const raw = [];
-    for (const item of json) {
-      const o = Math.round(Number(item.open));
-      const h = Math.round(Number(item.high));
-      const l = Math.round(Number(item.low));
-      const c = Math.round(Number(item.close));
-      raw.push({
-        time: item.time, // already in ms
-        open: o,
-        high: Math.max(h, o, c),
-        low: Math.min(l, o, c),
-        close: c,
-        price: c,
-        volume: Math.round(Number(item.volume || 0))
-      });
-    }
-    const maxBars = timeframe === '1Y' ? 400 : 140;
-    return consolidateCandles(raw, maxBars);
-  }
-  return null;
+  return parseCandlesFromArray(json, { divisor: 1, timeframe, timeInMs: true });
 }
 
 async function main() {
@@ -1150,11 +1034,6 @@ async function main() {
       rates[id].sparkline = series.map(c => Math.round(Number(c.close || c.price)));
     }
   });
-
-  // Nobitex has no 24h candle history from server (returns no_data), so sparkline is empty
-  if (rates.nobitex) {
-    rates.nobitex.sparkline = [];
-  }
 
   const output = {
     updatedAt: new Date().toISOString(),

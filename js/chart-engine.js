@@ -3,6 +3,18 @@
    Touch-friendly dragging, crosshair, dynamic resolution & theme reactivity
    ========================================================================== */
 
+// Cached formatters to eliminate repeated ICU/locale object allocations on every render & hover
+const CHART_DATE_FORMATTERS = {
+  faFullDate: new Intl.DateTimeFormat('fa-IR', { year: 'numeric', month: 'long', day: 'numeric', timeZone: 'Asia/Tehran' }),
+  faMonthDay: new Intl.DateTimeFormat('fa-IR', { month: 'short', day: 'numeric', timeZone: 'Asia/Tehran' }),
+  faYearMonth: new Intl.DateTimeFormat('fa-IR', { year: 'numeric', month: 'short', timeZone: 'Asia/Tehran' }),
+  enShortDate: new Intl.DateTimeFormat('en-US', { year: 'numeric', month: 'short', day: 'numeric', timeZone: 'Asia/Tehran' }),
+  enMonthDay: new Intl.DateTimeFormat('en-US', { month: 'short', day: 'numeric', timeZone: 'Asia/Tehran' }),
+  enYearMonth: new Intl.DateTimeFormat('en-US', { year: 'numeric', month: 'short', timeZone: 'Asia/Tehran' }),
+  time24: new Intl.DateTimeFormat('en-US', { hour12: false, hour: '2-digit', minute: '2-digit', timeZone: 'Asia/Tehran' }),
+  tehranIsoDay: new Intl.DateTimeFormat('en-CA', { year: 'numeric', month: '2-digit', day: '2-digit', timeZone: 'Asia/Tehran' })
+};
+
 class ChartEngine {
   constructor() {
     this.canvas = null;
@@ -145,17 +157,8 @@ class ChartEngine {
     let faFullDate = '';
     let faMonthDay = '';
     try {
-      faFullDate = new Intl.DateTimeFormat('fa-IR', {
-        year: 'numeric',
-        month: 'long',
-        day: 'numeric',
-        timeZone: 'Asia/Tehran'
-      }).format(d);
-      faMonthDay = new Intl.DateTimeFormat('fa-IR', {
-        month: 'short',
-        day: 'numeric',
-        timeZone: 'Asia/Tehran'
-      }).format(d);
+      faFullDate = CHART_DATE_FORMATTERS.faFullDate.format(d);
+      faMonthDay = CHART_DATE_FORMATTERS.faMonthDay.format(d);
     } catch (e) {
       faFullDate = d.toLocaleDateString('fa-IR', { timeZone: 'Asia/Tehran' });
       faMonthDay = faFullDate;
@@ -163,28 +166,18 @@ class ChartEngine {
 
     let enShortDate = '';
     try {
-      enShortDate = new Intl.DateTimeFormat('en-US', {
-        year: 'numeric',
-        month: 'short',
-        day: 'numeric',
-        timeZone: 'Asia/Tehran'
-      }).format(d);
+      enShortDate = CHART_DATE_FORMATTERS.enShortDate.format(d);
     } catch (e) {
       enShortDate = d.toLocaleDateString('en-US', { timeZone: 'Asia/Tehran' });
     }
 
-    const timeStr = d.toLocaleTimeString('en-US', {
-      hour12: false,
-      hour: '2-digit',
-      minute: '2-digit',
-      timeZone: 'Asia/Tehran'
-    });
+    const timeStr = CHART_DATE_FORMATTERS.time24.format(d);
 
     if (tf === '1H') {
       let isToday = true;
       try {
-        const nowTehran = new Intl.DateTimeFormat('en-CA', { timeZone: 'Asia/Tehran', year: 'numeric', month: '2-digit', day: '2-digit' }).format(new Date());
-        const candleTehran = new Intl.DateTimeFormat('en-CA', { timeZone: 'Asia/Tehran', year: 'numeric', month: '2-digit', day: '2-digit' }).format(d);
+        const nowTehran = CHART_DATE_FORMATTERS.tehranIsoDay.format(new Date());
+        const candleTehran = CHART_DATE_FORMATTERS.tehranIsoDay.format(d);
         isToday = nowTehran === candleTehran;
       } catch (e) {}
       const dayLabel = isToday ? '(امروز)' : `(${faMonthDay})`;
@@ -194,7 +187,12 @@ class ChartEngine {
       return `<b>${faMonthDay}</b> • <b>${timeStr}</b>`;
     }
     if (tf === '7D' || tf === '30D') {
-      const enDay = d.toLocaleDateString('en-US', { month: 'short', day: 'numeric', timeZone: 'Asia/Tehran' });
+      let enDay = '';
+      try {
+        enDay = CHART_DATE_FORMATTERS.enMonthDay.format(d);
+      } catch (e) {
+        enDay = d.toLocaleDateString('en-US', { month: 'short', day: 'numeric', timeZone: 'Asia/Tehran' });
+      }
       return `<b>${faMonthDay}</b> • <b>${timeStr}</b> <span style="opacity:0.65; font-size:10px;">(${enDay})</span>`;
     }
     if (tf === '1Y') {
@@ -208,41 +206,20 @@ class ChartEngine {
   formatAxisLabel(date, timeframe) {
     const d = date instanceof Date ? date : new Date(date);
     if (timeframe === '1H' || timeframe === '24H') {
-      return d.toLocaleTimeString('en-US', {
-        hour12: false,
-        hour: '2-digit',
-        minute: '2-digit',
-        timeZone: 'Asia/Tehran'
-      });
+      return CHART_DATE_FORMATTERS.time24.format(d);
     }
     if (timeframe === '7D' || timeframe === '30D') {
       try {
-        return new Intl.DateTimeFormat('fa-IR', {
-          month: 'short',
-          day: 'numeric',
-          timeZone: 'Asia/Tehran'
-        }).format(d);
+        return CHART_DATE_FORMATTERS.faMonthDay.format(d);
       } catch (e) {
-        return d.toLocaleDateString('en-US', {
-          month: 'short',
-          day: 'numeric',
-          timeZone: 'Asia/Tehran'
-        });
+        return CHART_DATE_FORMATTERS.enMonthDay.format(d);
       }
     }
     if (timeframe === '1Y') {
       try {
-        return new Intl.DateTimeFormat('fa-IR', {
-          year: 'numeric',
-          month: 'short',
-          timeZone: 'Asia/Tehran'
-        }).format(d);
+        return CHART_DATE_FORMATTERS.faYearMonth.format(d);
       } catch (e) {
-        return d.toLocaleDateString('en-US', {
-          year: 'numeric',
-          month: 'short',
-          timeZone: 'Asia/Tehran'
-        });
+        return CHART_DATE_FORMATTERS.enYearMonth.format(d);
       }
     }
     return d.toLocaleDateString('fa-IR', { timeZone: 'Asia/Tehran' });
