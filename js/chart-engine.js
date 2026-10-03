@@ -15,6 +15,14 @@ const CHART_DATE_FORMATTERS = {
   tehranIsoDay: new Intl.DateTimeFormat('en-CA', { year: 'numeric', month: '2-digit', day: '2-digit', timeZone: 'Asia/Tehran' })
 };
 
+const TIMEFRAME_CONFIGS = {
+  '1H': { durationMs: 60 * 60 * 1000, defaultIntervalMs: 60 * 1000 },
+  '24H': { durationMs: 24 * 60 * 60 * 1000, defaultIntervalMs: 15 * 60 * 1000 },
+  '7D': { durationMs: 7 * 24 * 60 * 60 * 1000, defaultIntervalMs: 60 * 60 * 1000 },
+  '30D': { durationMs: 30 * 24 * 60 * 60 * 1000, defaultIntervalMs: 4 * 60 * 60 * 1000 },
+  '1Y': { durationMs: 365 * 24 * 60 * 60 * 1000, defaultIntervalMs: 24 * 60 * 60 * 1000 }
+};
+
 class ChartEngine {
   constructor() {
     this.canvas = null;
@@ -24,6 +32,8 @@ class ChartEngine {
     this.timeframe = '24H';
     this.source = 'aggregate';
     this.dataPoints = [];
+    this.renderedPoints = [];
+    this.renderedCandlePoints = [];
     this.hoverIndex = -1;
     this.isDragging = false;
     this.chartType = 'candlestick'; // 'candlestick' | 'line'
@@ -365,47 +375,57 @@ class ChartEngine {
     const greenColor = '#10b981';
     const redColor = '#ef4444';
 
+    const tfConfig = TIMEFRAME_CONFIGS[this.timeframe] || TIMEFRAME_CONFIGS['24H'];
+    const durationMs = tfConfig.durationMs;
+
+    const nowMs = Date.now();
+    const lastPointTime = renderPoints.length > 0
+      ? (renderPoints[renderPoints.length - 1].time instanceof Date ? renderPoints[renderPoints.length - 1].time.getTime() : Number(renderPoints[renderPoints.length - 1].time))
+      : nowMs;
+    const endTime = Math.max(nowMs, lastPointTime);
+    const startTime = endTime - durationMs;
+
     // Draw Bottom X-Axis Timeline Labels
-    if (count > 1) {
-      const labelCount = w < 480 ? 3 : (w < 768 ? 4 : 5);
-      const stepIdx = (count - 1) / (labelCount - 1);
+    const labelCount = w < 480 ? 3 : (w < 768 ? 4 : 5);
+    ctx.fillStyle = bgInverse;
+    ctx.globalAlpha = 0.55;
+    ctx.font = '10px "Vazirmatn", sans-serif';
+    ctx.textBaseline = 'top';
 
-      ctx.fillStyle = bgInverse;
-      ctx.globalAlpha = 0.55;
-      ctx.font = '10px "Vazirmatn", sans-serif';
-      ctx.textBaseline = 'top';
+    for (let i = 0; i < labelCount; i++) {
+      const t = startTime + (i / (labelCount - 1)) * durationMs;
+      const posX = padding.left + (i / (labelCount - 1)) * chartW;
 
-      for (let i = 0; i < labelCount; i++) {
-        const idx = Math.min(count - 1, Math.round(i * stepIdx));
-        const dp = renderPoints[idx];
-        if (!dp) continue;
-
-        let posX = padding.left + (idx / (count - 1)) * chartW;
-        if (this.chartType === 'candlestick') {
-          const slotW = chartW / count;
-          posX = padding.left + idx * slotW + slotW / 2;
-        }
-
-        if (i === 0) {
-          ctx.textAlign = 'left';
-        } else if (i === labelCount - 1) {
-          ctx.textAlign = 'right';
-        } else {
-          ctx.textAlign = 'center';
-        }
-
-        const labelText = this.formatAxisLabel(dp.time, this.timeframe);
-        ctx.fillText(labelText, posX, padding.top + chartH + 8);
+      if (i === 0) {
+        ctx.textAlign = 'left';
+      } else if (i === labelCount - 1) {
+        ctx.textAlign = 'right';
+      } else {
+        ctx.textAlign = 'center';
       }
-      ctx.globalAlpha = 1.0;
+
+      const labelText = this.formatAxisLabel(new Date(t), this.timeframe);
+      ctx.fillText(labelText, posX, padding.top + chartH + 8);
     }
+    ctx.globalAlpha = 1.0;
 
     // =========================================================================
     // 1. CANDLESTICK CHART MODE (Default)
     // =========================================================================
     if (this.chartType === 'candlestick') {
-      const slotW = chartW / count;
-      const candleW = Math.max(1, Math.min(16, Math.floor(slotW * 0.72)));
+      let minIntervalMs = Infinity;
+      for (let i = 1; i < renderPoints.length; i++) {
+        const t1 = renderPoints[i - 1].time instanceof Date ? renderPoints[i - 1].time.getTime() : Number(renderPoints[i - 1].time);
+        const t2 = renderPoints[i].time instanceof Date ? renderPoints[i].time.getTime() : Number(renderPoints[i].time);
+        const diff = t2 - t1;
+        if (diff > 0 && diff < minIntervalMs) minIntervalMs = diff;
+      }
+      if (!Number.isFinite(minIntervalMs) || minIntervalMs <= 0) {
+        minIntervalMs = tfConfig.defaultIntervalMs;
+      }
+
+      const slotW = Math.max(2.5, (minIntervalMs / durationMs) * chartW);
+      const candleW = Math.max(1.5, Math.min(16, Math.floor(slotW * 0.72)));
       const maxVol = Math.max(...renderPoints.map(p => p.volume || 1), 1);
       const volAreaHeight = chartH * 0.16;
       const volBaseline = padding.top + chartH;
@@ -413,7 +433,9 @@ class ChartEngine {
       const points = [];
 
       renderPoints.forEach((dp, i) => {
-        const x = padding.left + i * slotW + slotW / 2;
+        const timeMs = dp.time instanceof Date ? dp.time.getTime() : Number(dp.time);
+        const progress = Math.max(0, Math.min(1, (timeMs - startTime) / durationMs));
+        const x = padding.left + progress * chartW;
         const open = dp.open != null ? dp.open : dp.price;
         const close = dp.close != null ? dp.close : dp.price;
         const high = dp.high != null ? dp.high : Math.max(open, close);
@@ -454,6 +476,8 @@ class ChartEngine {
         ctx.lineWidth = 1;
         ctx.strokeRect(x - candleW / 2, bodyTop, candleW, bodyHeight);
       });
+
+      this.renderedCandlePoints = points;
 
       // Active Crosshair & Tooltip
       if (this.hoverIndex >= 0 && this.hoverIndex < points.length) {
@@ -517,11 +541,14 @@ class ChartEngine {
     // 2. LINE CHART MODE
     // =========================================================================
     } else {
-      const points = renderPoints.map((dp, i) => {
-        const x = padding.left + (count > 1 ? (i / (count - 1)) * chartW : chartW / 2);
+      const points = renderPoints.map((dp) => {
+        const timeMs = dp.time instanceof Date ? dp.time.getTime() : Number(dp.time);
+        const progress = Math.max(0, Math.min(1, (timeMs - startTime) / durationMs));
+        const x = padding.left + progress * chartW;
         const y = padding.top + chartH - ((dp.price - minP) / adjustedRange) * chartH;
         return { x, y, dp };
       });
+      this.renderedCandlePoints = points;
 
       if (count <= 1) {
         if (points.length === 1) {
@@ -642,24 +669,22 @@ class ChartEngine {
     const handleMove = (clientX) => {
       const rect = this.viewport.getBoundingClientRect();
       const x = clientX - rect.left;
-      const isMobile = rect.width < 500;
-      const padding = { left: 14, right: isMobile ? 48 : 58 };
-      const chartW = rect.width - padding.left - padding.right;
-
-      const normX = Math.max(0, Math.min(chartW, x - padding.left));
-      const pointsList = this.renderedPoints || this.dataPoints;
+      const pointsList = (this.renderedCandlePoints && this.renderedCandlePoints.length) ? this.renderedCandlePoints : (this.renderedPoints || this.dataPoints);
       const count = pointsList.length;
       if (count <= 0) return;
 
-      let idx;
-      if (this.chartType === 'candlestick') {
-        const slotW = chartW / count;
-        idx = Math.floor(normX / slotW);
-        idx = Math.max(0, Math.min(count - 1, idx));
-      } else {
-        idx = count > 1 ? Math.round((normX / chartW) * (count - 1)) : 0;
-      }
-      this.hoverIndex = idx;
+      let closestIdx = -1;
+      let minDistance = Infinity;
+      pointsList.forEach((pt, i) => {
+        const ptX = typeof pt.x === 'number' ? pt.x : 0;
+        const d = Math.abs(ptX - x);
+        if (d < minDistance) {
+          minDistance = d;
+          closestIdx = i;
+        }
+      });
+
+      this.hoverIndex = closestIdx;
       this.render();
     };
 

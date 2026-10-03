@@ -588,7 +588,8 @@ async function fetchExirPrices() {
       change24h: change,
       high24h: Math.max(high, price),
       low24h: Math.min(low, price),
-      vol24h: volUsdt
+      vol24h: volUsdt,
+      time: json.time
     };
   }
   return null;
@@ -703,12 +704,17 @@ async function main() {
 
     if (live && typeof live.buyPrice === 'number' && live.buyPrice > 0) {
       // 1. Live real data successfully received
+      const STALE_MAX_AGE_MS = 45 * 60 * 1000;
+      const isTickerStale = live.time && (Date.now() - new Date(live.time).getTime() > STALE_MAX_AGE_MS);
+      const status = isTickerStale ? 'stale' : 'live';
+      const lastSuccessAt = isTickerStale ? new Date(live.time).toISOString() : nowIso;
+
       rates[def.id] = {
         id: def.id,
         name: def.name,
         faName: def.faName,
-        status: 'live',
-        lastSuccessAt: nowIso,
+        status: status,
+        lastSuccessAt: lastSuccessAt,
         buyPrice: live.buyPrice,
         sellPrice: live.sellPrice,
         change24h: live.change24h != null ? Number(Number(live.change24h).toFixed(2)) : 0,
@@ -717,7 +723,11 @@ async function main() {
         low24h: live.low24h,
         sparkline: initialSpark
       };
-      console.log(`[OK] Exchange ${def.name}: LIVE (${live.buyPrice.toLocaleString()} Toman)`);
+      if (isTickerStale) {
+        console.warn(`[STALE] Exchange ${def.name}: Ticker last trade was at ${lastSuccessAt} -> marked STALE (Market closed)`);
+      } else {
+        console.log(`[OK] Exchange ${def.name}: LIVE (${live.buyPrice.toLocaleString()} Toman)`);
+      }
     } else if (existingRate && typeof existingRate.buyPrice === 'number' && existingRate.buyPrice > 0) {
       // 2. Live fetch failed, preserve real existing snapshot as stale
       rates[def.id] = {
@@ -756,11 +766,12 @@ async function main() {
   });
 
   const liveCount = Object.values(rates).filter(r => r.status === 'live').length;
-  console.log(`\n[STATUS SUMMARY] Live exchanges: ${liveCount}/${EXCHANGES_DEF.length}`);
+  const staleCount = Object.values(rates).filter(r => r.status === 'stale').length;
+  console.log(`\n[STATUS SUMMARY] Live: ${liveCount}, Stale/Offline: ${staleCount}/${EXCHANGES_DEF.length}`);
 
-  // Critical threshold check: abort and fail CI if too many exchanges failed
-  if (liveCount < 4) {
-    console.error(`[CRITICAL] Only ${liveCount}/${EXCHANGES_DEF.length} exchanges fetched successfully. Threshold is 4. Aborting without saving to avoid corrupting market data.`);
+  // Critical threshold check: abort and fail CI if too many exchanges failed completely
+  if (liveCount + staleCount < 4) {
+    console.error(`[CRITICAL] Only ${liveCount + staleCount}/${EXCHANGES_DEF.length} exchanges fetched successfully. Threshold is 4. Aborting without saving.`);
     process.exit(1);
   }
 
@@ -920,12 +931,24 @@ async function main() {
     exir: 'exir_24H'
   };
 
+  const CANDLE_STALE_MAX_AGE_MS = 45 * 60 * 1000;
+  const nowTimestamp = Date.now();
+
   Object.keys(sparklineMap).forEach(id => {
     const cKey = sparklineMap[id];
     const series = candles[cKey] || candles[cKey.replace('wallex_', '')];
     if (series && Array.isArray(series) && series.length > 0 && rates[id]) {
       // 100% exact copy of the 24H candle close prices shown on the main chart!
       rates[id].sparkline = series.map(c => Math.round(Number(c.close || c.price)));
+
+      // If the latest candle in the 24H series is older than 45 minutes, mark exchange stale/offline (e.g. night halt)
+      const lastCandle = series[series.length - 1];
+      const candleTime = lastCandle.time instanceof Date ? lastCandle.time.getTime() : Number(lastCandle.time);
+      if (nowTimestamp - candleTime > CANDLE_STALE_MAX_AGE_MS) {
+        rates[id].status = 'stale';
+        rates[id].lastSuccessAt = new Date(candleTime).toISOString();
+        console.warn(`[STALE] Exchange ${rates[id].name}: Last 24H candle is ${Math.round((nowTimestamp - candleTime) / 60000)} mins old -> marked STALE (Market closed)`);
+      }
     }
   });
 

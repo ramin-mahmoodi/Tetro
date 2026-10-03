@@ -178,6 +178,20 @@ class DataAdapter {
         });
       }
 
+      // Check candle freshness to identify halted exchanges (market closed 21:00 - 09:00)
+      const nowMs = Date.now();
+      const STALE_THRESHOLD_MS = 45 * 60 * 1000;
+      this.rates.forEach((rate, id) => {
+        const candles24 = this.historyCache.get(`${id}_24H`);
+        if (candles24 && candles24.length > 0) {
+          const lastCandle = candles24[candles24.length - 1];
+          const candleTime = lastCandle.time instanceof Date ? lastCandle.time.getTime() : Number(lastCandle.time);
+          if (nowMs - candleTime > STALE_THRESHOLD_MS) {
+            rate.status = 'stale';
+          }
+        }
+      });
+
       // Notify UI
       this.notify({
         type: 'market_loaded',
