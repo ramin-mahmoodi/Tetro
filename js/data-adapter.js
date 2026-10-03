@@ -168,11 +168,14 @@ class DataAdapter {
               time: new Date(p.time),
               label: this.formatTimeLabel(new Date(p.time), cleanTf)
             }));
-            if (tf.includes('_')) {
-              this.historyCache.set(tf, formatted);
-            } else {
-              this.historyCache.set(`wallex_${tf}`, formatted);
-              this.historyCache.set(`aggregate_${tf}`, formatted);
+            this.historyCache.set(tf, formatted);
+            if (!tf.includes('_')) {
+              if (!this.historyCache.has(`aggregate_${tf}`)) {
+                this.historyCache.set(`aggregate_${tf}`, formatted);
+              }
+              if (!data.candles[`wallex_${tf}`] && !this.historyCache.has(`wallex_${tf}`)) {
+                this.historyCache.set(`wallex_${tf}`, formatted);
+              }
             }
           }
         });
@@ -228,9 +231,16 @@ class DataAdapter {
 
   getSparkline(exchangeId) {
     // 1. Try to get directly from cached 24H candles of that exchange
-    const cKey = exchangeId === 'wallex' ? '24H' : `${exchangeId}_24H`;
+    const cKey = `${exchangeId}_24H`;
     if (this.historyCache.has(cKey)) {
       const candles = this.historyCache.get(cKey);
+      if (Array.isArray(candles) && candles.length > 1) {
+        return candles.map(c => Math.round(Number(c.close != null ? c.close : c.price)));
+      }
+    }
+    // Fallback for legacy fixtures without exchange prefix
+    if (exchangeId === 'wallex' && this.historyCache.has('24H')) {
+      const candles = this.historyCache.get('24H');
       if (Array.isArray(candles) && candles.length > 1) {
         return candles.map(c => Math.round(Number(c.close != null ? c.close : c.price)));
       }

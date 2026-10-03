@@ -203,3 +203,48 @@ test('Proxy security validation', async (t) => {
     assert.equal(ALLOWED_PROXY_HOSTS.has('evil.com'), false);
   });
 });
+
+// 6. Candle History Cache Isolation Test Suite
+function cacheCandles(candlesObj) {
+  const cache = new Map();
+  if (!candlesObj || typeof candlesObj !== 'object') return cache;
+  Object.keys(candlesObj).forEach(tf => {
+    const rawPoints = candlesObj[tf];
+    if (Array.isArray(rawPoints) && rawPoints.length > 0) {
+      cache.set(tf, rawPoints);
+      if (!tf.includes('_')) {
+        if (!cache.has(`aggregate_${tf}`)) {
+          cache.set(`aggregate_${tf}`, rawPoints);
+        }
+        if (!candlesObj[`wallex_${tf}`] && !cache.has(`wallex_${tf}`)) {
+          cache.set(`wallex_${tf}`, rawPoints);
+        }
+      }
+    }
+  });
+  return cache;
+}
+
+test('Candle history cache isolation', async (t) => {
+  await t.test('wallex candles are not overwritten by aggregate or generic candles', () => {
+    const candlesData = {
+      'wallex_24H': [{ time: 1000, close: 261000, price: 261000 }],
+      'aggregate_24H': [{ time: 1000, close: 263000, price: 263000 }],
+      '24H': [{ time: 1000, close: 263000, price: 263000 }]
+    };
+    const cache = cacheCandles(candlesData);
+    assert.equal(cache.get('wallex_24H')[0].close, 261000);
+    assert.equal(cache.get('aggregate_24H')[0].close, 263000);
+    assert.notEqual(cache.get('wallex_24H')[0].close, cache.get('aggregate_24H')[0].close);
+  });
+
+  await t.test('backfills wallex for legacy data only when wallex candle key is absent', () => {
+    const legacyData = {
+      '24H': [{ time: 1000, close: 260000, price: 260000 }]
+    };
+    const cache = cacheCandles(legacyData);
+    assert.equal(cache.get('wallex_24H')[0].close, 260000);
+    assert.equal(cache.get('aggregate_24H')[0].close, 260000);
+  });
+});
+
