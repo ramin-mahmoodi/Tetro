@@ -138,20 +138,23 @@ function computeAggregateStats(rates) {
   // Exclude > 8% deviation from median
   const pool = valid.filter(r => Math.abs(r.buyPrice - medianBuy) / medianBuy <= 0.08);
 
+  const poolWithVol = pool.filter(item => (Number(item.vol24h) || 0) > 0);
+  const vwapPool = poolWithVol.length > 0 ? poolWithVol : pool;
+
   let totalWeight = 0;
   let weightedBuy = 0;
   let weightedSell = 0;
 
-  pool.forEach(item => {
-    const vol = Math.max(1, Number(item.vol24h) || 1000000);
+  vwapPool.forEach(item => {
+    const vol = poolWithVol.length > 0 ? Number(item.vol24h) : 1;
     totalWeight += vol;
     weightedBuy += item.buyPrice * vol;
     weightedSell += item.sellPrice * vol;
   });
 
   return {
-    avgBuy: Math.round(weightedBuy / totalWeight),
-    avgSell: Math.round(weightedSell / totalWeight)
+    avgBuy: totalWeight > 0 ? Math.round(weightedBuy / totalWeight) : Math.round(medianBuy),
+    avgSell: totalWeight > 0 ? Math.round(weightedSell / totalWeight) : Math.round(medianBuy)
   };
 }
 

@@ -173,8 +173,8 @@ async function fetchWallexPrices() {
         buyPrice: price,
         sellPrice: price,
         change24h: Number(tmn.change24h || 0),
-        high24h: Math.round(Number(tmn.dailyHighPrice || price * 1.005)),
-        low24h: Math.round(Number(tmn.dailyLowPrice || price * 0.995)),
+        high24h: Math.round(Number(tmn.dailyHighPrice || price)),
+        low24h: Math.round(Number(tmn.dailyLowPrice || price)),
         vol24h: 0
       };
     }
@@ -875,14 +875,19 @@ async function main() {
     process.exit(1);
   }
 
-  // Calculate Volume-Weighted Average Price (VWAP) across all valid rates
+  // Calculate Volume-Weighted Average Price (VWAP) across all valid rates using authentic volumes
   const validRates = Object.values(rates).filter(r => typeof r.buyPrice === 'number' && r.buyPrice > 50000 && r.buyPrice < 500000);
-  let basePrice = existing.basePrice || 260000;
+  let basePrice = existing.basePrice || null;
   if (validRates.length > 0) {
-    const totalVol = validRates.reduce((acc, r) => acc + (r.vol24h || 0), 0);
-    const weightedSum = validRates.reduce((acc, r) => acc + (r.buyPrice * (r.vol24h || 100000)), 0);
-    const weightTotal = validRates.reduce((acc, r) => acc + (r.vol24h || 100000), 0);
-    basePrice = Math.round(weightedSum / weightTotal);
+    const ratesWithVol = validRates.filter(r => (r.vol24h || 0) > 0);
+    if (ratesWithVol.length > 0) {
+      const weightedSum = ratesWithVol.reduce((acc, r) => acc + (r.buyPrice * r.vol24h), 0);
+      const weightTotal = ratesWithVol.reduce((acc, r) => acc + r.vol24h, 0);
+      basePrice = Math.round(weightedSum / weightTotal);
+    } else {
+      const sum = validRates.reduce((acc, r) => acc + r.buyPrice, 0);
+      basePrice = Math.round(sum / validRates.length);
+    }
   }
 
   // Fetch candle historical sets for chart

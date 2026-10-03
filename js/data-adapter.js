@@ -65,7 +65,7 @@ class DataAdapter {
     this.livePollTimer = null;
     this.sparklinePollTimer = null;
     this.marketJsonTimer = null;
-    this.basePrice = 260000;
+    this.basePrice = null;
   }
 
   // Resolves API endpoint through local development proxy (when on localhost)
@@ -288,19 +288,24 @@ class DataAdapter {
     let maxHigh = -Infinity;
 
     pool.forEach(item => {
-      const vol = Math.max(1, Number(item.vol24h) || 1000000);
+      totalVol += (Number(item.vol24h) || 0);
+      if (item.low24h != null && item.low24h < minLow) minLow = item.low24h;
+      if (item.high24h != null && item.high24h > maxHigh) maxHigh = item.high24h;
+    });
+
+    const poolWithVol = pool.filter(item => (Number(item.vol24h) || 0) > 0);
+    const vwapPool = poolWithVol.length > 0 ? poolWithVol : pool;
+
+    vwapPool.forEach(item => {
+      const vol = poolWithVol.length > 0 ? Number(item.vol24h) : 1;
       totalWeight += vol;
       weightedBuy += item.buyPrice * vol;
       weightedSell += item.sellPrice * vol;
       weightedChange += (Number(item.change24h) || 0) * vol;
-      totalVol += (Number(item.vol24h) || 0);
-
-      if (item.low24h < minLow) minLow = item.low24h;
-      if (item.high24h > maxHigh) maxHigh = item.high24h;
     });
 
     let avgBuy = totalWeight > 0 ? Math.round(weightedBuy / totalWeight) : Math.round(medianBuy);
-    let avgSell = totalWeight > 0 ? Math.round(weightedSell / totalWeight) : Math.round(medianBuy - 50);
+    let avgSell = totalWeight > 0 ? Math.round(weightedSell / totalWeight) : Math.round(medianBuy);
 
     // Guaranteed spread integrity
     if (avgBuy < avgSell) {
@@ -556,8 +561,8 @@ class DataAdapter {
       const last = Math.round(Number(usdt.stats.lastPrice));
       const ch24h = Number(usdt.stats['24h_ch'] || 0);
       const vol = Math.round(Number(usdt.stats['24h_volume'] || 0));
-      const high = Math.round(Number(usdt.stats['24h_highPrice'] || last * 1.01));
-      const low = Math.round(Number(usdt.stats['24h_lowPrice'] || last * 0.99));
+      const high = Math.round(Number(usdt.stats['24h_highPrice'] || last));
+      const low = Math.round(Number(usdt.stats['24h_lowPrice'] || last));
 
       const wallexRate = this.rates.get('wallex');
       if (wallexRate) {
@@ -714,7 +719,15 @@ class DataAdapter {
       const high = Math.round(Number(bp.order_book_info?.max || bp.price_info?.max || price));
       const low = Math.round(Number(bp.order_book_info?.min || bp.price_info?.min || price));
       const ch24h = Number((bp.price_info && bp.price_info.change != null) ? bp.price_info.change : (bp.order_book_info?.change ? bp.order_book_info.change * 100 : 0));
-      const volUsdt = Math.round(Number(bp.order_book_info?.amount || 2400000)); // order_book_info.amount is USDT!
+      let volUsdt = 0;
+      if (bp.order_book_info && bp.order_book_info.amount) {
+        volUsdt = Math.round(Number(bp.order_book_info.amount));
+      } else if (bp.order_book_info && bp.order_book_info.value && price > 0) {
+        volUsdt = Math.round(Number(bp.order_book_info.value) / price);
+      } else {
+        const existingBp = this.rates.get('bitpin');
+        volUsdt = (existingBp && existingBp.vol24h) || 0;
+      }
 
       const bpRate = this.rates.get('bitpin');
       if (bpRate && price > 0) {
