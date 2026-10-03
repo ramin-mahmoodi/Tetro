@@ -568,7 +568,10 @@ class DataAdapter {
       if (wallexRate) {
         const newBuy = Math.max(ask, bid) || last; // user buys from ask
         const newSell = Math.min(ask, bid) || last; // user sells to bid
-        if (newBuy > 0 && (newBuy !== wallexRate.buyPrice || newSell !== wallexRate.sellPrice)) {
+        const wasStale = wallexRate.status !== 'live';
+        wallexRate.status = 'live';
+        wallexRate.lastSuccessAt = new Date().toISOString();
+        if (newBuy > 0 && (newBuy !== wallexRate.buyPrice || newSell !== wallexRate.sellPrice || wasStale)) {
           const dir = newBuy > wallexRate.buyPrice ? 'up' : (newBuy < wallexRate.buyPrice ? 'down' : 'none');
           wallexRate.buyPrice = newBuy;
           wallexRate.sellPrice = newSell;
@@ -619,7 +622,10 @@ class DataAdapter {
       if (nobitexRate && (buyPrice > 0 || lastPrice > 0)) {
         const activeBuy = buyPrice || lastPrice;
         const activeSell = sellPrice || lastPrice;
-        if (activeBuy !== nobitexRate.buyPrice || activeSell !== nobitexRate.sellPrice) {
+        const wasStale = nobitexRate.status !== 'live';
+        nobitexRate.status = 'live';
+        nobitexRate.lastSuccessAt = new Date().toISOString();
+        if ((activeBuy > 0 || activeSell > 0) && (activeBuy !== nobitexRate.buyPrice || activeSell !== nobitexRate.sellPrice || wasStale)) {
           const dir = activeBuy > nobitexRate.buyPrice ? 'up' : (activeBuy < nobitexRate.buyPrice ? 'down' : 'none');
           nobitexRate.buyPrice = activeBuy;
           nobitexRate.sellPrice = activeSell;
@@ -707,9 +713,23 @@ class DataAdapter {
     try {
       const targetUrl = 'https://api.bitpin.ir/v4/mkt/prices/';
       const isLocal = typeof window !== 'undefined' && (window.location.hostname === 'localhost' || window.location.hostname === '127.0.0.1');
-      const fetchUrl = isLocal ? (this.getProxyUrl(targetUrl) || targetUrl) : targetUrl;
-      const res = await fetch(fetchUrl);
-      if (!res.ok) return;
+      let fetchUrl = isLocal ? (this.getProxyUrl(targetUrl) || targetUrl) : targetUrl;
+      let res;
+      try {
+        res = await fetch(fetchUrl);
+      } catch (e) {
+        res = null;
+      }
+      if (!res || !res.ok) {
+        targetUrl = 'https://api.bitpin.org/v4/mkt/prices/';
+        fetchUrl = isLocal ? (this.getProxyUrl(targetUrl) || targetUrl) : targetUrl;
+        try {
+          res = await fetch(fetchUrl);
+        } catch (e) {
+          return;
+        }
+      }
+      if (!res || !res.ok) return;
       const json = await res.json();
       const list = Array.isArray(json) ? json : (json?.results ? (Array.isArray(json.results) ? json.results : Object.values(json.results)) : []);
       const bp = list.find(p => p.code === 'USDT_IRT');
@@ -731,8 +751,11 @@ class DataAdapter {
 
       const bpRate = this.rates.get('bitpin');
       if (bpRate && price > 0) {
-        if (price !== bpRate.buyPrice) {
-          const dir = price > bpRate.buyPrice ? 'up' : 'down';
+        const wasStale = bpRate.status !== 'live';
+        bpRate.status = 'live';
+        bpRate.lastSuccessAt = new Date().toISOString();
+        if (price !== bpRate.buyPrice || wasStale) {
+          const dir = price > bpRate.buyPrice ? 'up' : (price < bpRate.buyPrice ? 'down' : 'none');
           bpRate.buyPrice = price;
           bpRate.sellPrice = price;
           bpRate.change24h = Number(Number(ch24h).toFixed(2));

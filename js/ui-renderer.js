@@ -379,9 +379,23 @@ class UIRenderer {
       }
     }
 
-    // Update 24h high/low range and change badge in the row
+    // Update 24h high/low range, status badge, and change badge in the row
     const rowEl = document.getElementById(`row-${event.exchangeId}`);
     if (rowEl && event.rate) {
+      const nameRowEl = rowEl.querySelector('.ex-name-row');
+      if (nameRowEl) {
+        const tagEl = nameRowEl.querySelector('.ex-status-tag');
+        if (event.rate.status === 'live' && tagEl) {
+          tagEl.remove();
+        } else if (event.rate.status === 'stale' && !tagEl) {
+          const newTag = document.createElement('span');
+          newTag.className = 'ex-status-tag stale';
+          newTag.title = 'عدم دریافت زنده - آخرین نرخ معتبر';
+          newTag.textContent = 'آفلاین';
+          nameRowEl.appendChild(newTag);
+        }
+      }
+
       const changeEl = rowEl.querySelector('.ex-col-change .change-badge');
       if (changeEl && event.rate.change24h != null) {
         const chVal = this.formatChange(event.rate.change24h);

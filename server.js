@@ -24,7 +24,8 @@ const ALLOWED_PROXY_HOSTS = new Set([
   'market.tetherland.com',
   'api-web.tabdeal.org',
   'api.exir.io',
-  'api.bitpin.ir'
+  'api.bitpin.ir',
+  'api.bitpin.org'
 ]);
 
 const server = http.createServer((req, res) => {

@@ -693,9 +693,13 @@ async function fetchExirCandles(timeframe) {
 }
 
 async function fetchBitpinPrices() {
-  const json = await safeFetchJson('https://api.bitpin.ir/v4/mkt/prices/');
-  if (Array.isArray(json)) {
-    const usdt = json.find(p => p.code === 'USDT_IRT');
+  let json = await safeFetchJson('https://api.bitpin.ir/v4/mkt/prices/', 12000);
+  if (!json) {
+    json = await safeFetchJson('https://api.bitpin.org/v4/mkt/prices/', 12000);
+  }
+  const list = Array.isArray(json) ? json : (json?.results ? (Array.isArray(json.results) ? json.results : Object.values(json.results)) : []);
+  if (list.length > 0) {
+    const usdt = list.find(p => p.code === 'USDT_IRT');
     if (usdt) {
       const price = Math.round(Number(usdt.price || (usdt.order_book_info && usdt.order_book_info.price)));
       const high = Math.round(Number((usdt.order_book_info && usdt.order_book_info.max) || (usdt.price_info && usdt.price_info.max) || price));
@@ -724,8 +728,12 @@ async function fetchBitpinPrices() {
 async function fetchBitpinSparkline() {
   const now = Math.floor(Date.now() / 1000);
   const from = now - 86400;
-  const url = `https://api.bitpin.ir/v1/mkt/tv/get_bars/?symbol=USDT_IRT&res=60&from=${from}&to=${now}`;
-  const json = await safeFetchJson(url);
+  let url = `https://api.bitpin.ir/v1/mkt/tv/get_bars/?symbol=USDT_IRT&res=60&from=${from}&to=${now}`;
+  let json = await safeFetchJson(url, 10000);
+  if (!json || !Array.isArray(json)) {
+    url = `https://api.bitpin.org/v1/mkt/tv/get_bars/?symbol=USDT_IRT&res=60&from=${from}&to=${now}`;
+    json = await safeFetchJson(url, 10000);
+  }
   if (Array.isArray(json) && json.length > 0) {
     const closes = json.map(b => Math.round(Number(b.close)));
     return closes.slice(-24);
@@ -738,8 +746,12 @@ async function fetchBitpinCandles(timeframe) {
   if (!cfg) return null;
   const now = Math.floor(Date.now() / 1000);
   const from = now - cfg.sec;
-  const url = `https://api.bitpin.ir/v1/mkt/tv/get_bars/?symbol=USDT_IRT&res=${cfg.res}&from=${from}&to=${now}`;
-  const json = await safeFetchJson(url);
+  let url = `https://api.bitpin.ir/v1/mkt/tv/get_bars/?symbol=USDT_IRT&res=${cfg.res}&from=${from}&to=${now}`;
+  let json = await safeFetchJson(url, 10000);
+  if (!json || !Array.isArray(json)) {
+    url = `https://api.bitpin.org/v1/mkt/tv/get_bars/?symbol=USDT_IRT&res=${cfg.res}&from=${from}&to=${now}`;
+    json = await safeFetchJson(url, 10000);
+  }
   return parseCandlesFromArray(json, { divisor: 1, timeframe, timeInMs: true });
 }
 
