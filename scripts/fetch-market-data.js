@@ -53,8 +53,10 @@ async function fetchWallexPrices() {
   if (fData && fData.result && fData.result.symbols && fData.result.symbols.USDTTMN) {
     const usdt = fData.result.symbols.USDTTMN;
     if (usdt.stats) {
-      const buyPrice = Math.round(Number(usdt.stats.askPrice || usdt.stats.lastPrice));
-      const sellPrice = Math.round(Number(usdt.stats.bidPrice || usdt.stats.lastPrice));
+      const ask = Math.round(Number(usdt.stats.askPrice || usdt.stats.lastPrice));
+      const bid = Math.round(Number(usdt.stats.bidPrice || usdt.stats.lastPrice));
+      const buyPrice = Math.max(ask, bid); // user buys from ask
+      const sellPrice = Math.min(ask, bid); // user sells to bid
       const high = Math.round(Number(usdt.stats['24h_highPrice'] || buyPrice));
       const low = Math.round(Number(usdt.stats['24h_lowPrice'] || sellPrice));
       return {
@@ -63,7 +65,7 @@ async function fetchWallexPrices() {
         change24h: Number(usdt.stats['24h_ch'] || 0),
         high24h: Math.max(high, buyPrice),
         low24h: Math.min(low, sellPrice),
-        vol24h: Math.round(Number(usdt.stats['24h_tmnVolume'] || usdt.stats['24h_volume'] || 0))
+        vol24h: Math.round(Number(usdt.stats['24h_volume'] || 0)) // USDT volume!
       };
     }
   }
@@ -93,15 +95,17 @@ async function fetchNobitexPrices() {
   const data = await safeFetchJson('https://apiv2.nobitex.ir/market/stats?srcCurrency=usdt&dstCurrency=irt');
   if (data && data.stats && data.stats['usdt-irt']) {
     const pair = data.stats['usdt-irt'];
-    const buyPrice = Math.round(Number(pair.bestBuy || pair.latest) / 10);
-    const sellPrice = Math.round(Number(pair.bestSell || pair.latest) / 10);
+    const ask = Math.round(Number(pair.bestSell || pair.latest) / 10);
+    const bid = Math.round(Number(pair.bestBuy || pair.latest) / 10);
+    const buyPrice = Math.max(ask, bid); // user buys from lowest ask
+    const sellPrice = Math.min(ask, bid); // user sells to highest bid
     return {
       buyPrice: buyPrice,
       sellPrice: sellPrice,
       change24h: Number(pair.dayChange || 0),
       high24h: Math.round(Number(pair.dayHigh || 0) / 10),
       low24h: Math.round(Number(pair.dayLow || 0) / 10),
-      vol24h: Math.round(Number(pair.volumeSrc || 0))
+      vol24h: Math.round(Number(pair.volumeSrc || 0)) // volumeSrc is USDT!
     };
   }
   return null;
@@ -112,13 +116,19 @@ async function fetchAbanTetherPrices() {
   if (json && Array.isArray(json.data)) {
     const usdt = json.data.find(c => c.symbol === 'USDT');
     if (usdt) {
+      const pBuy = Math.round(Number(usdt.price_buy));
+      const pSell = Math.round(Number(usdt.price_sell));
+      const buyPrice = Math.max(pBuy, pSell);
+      const sellPrice = Math.min(pBuy, pSell);
+      const rawVolToman = Number(usdt.volume24h || 0);
+      const volUsdt = buyPrice > 0 ? Math.round(rawVolToman / buyPrice) : 3100000;
       return {
-        buyPrice: Math.round(Number(usdt.price_buy)),
-        sellPrice: Math.round(Number(usdt.price_sell)),
+        buyPrice: buyPrice,
+        sellPrice: sellPrice,
         change24h: Number(usdt.percent_change_24h || 0),
-        high24h: Math.round(Number(usdt.high_24h || 0)),
-        low24h: Math.round(Number(usdt.low_24h || 0)),
-        vol24h: Math.round(Number(usdt.volume24h || 0))
+        high24h: Math.round(Number(usdt.high_24h || buyPrice)),
+        low24h: Math.round(Number(usdt.low_24h || sellPrice)),
+        vol24h: volUsdt // Converted to USDT
       };
     }
   }
@@ -130,21 +140,109 @@ async function fetchRamzinexPrices() {
   if (json && Array.isArray(json.data)) {
     const p11 = json.data.find(p => p.pair_id === 11);
     if (p11 && p11.financial && p11.financial.last24h) {
-      const buyPrice = Math.round(Number(p11.sell) / 10);
-      const sellPrice = Math.round(Number(p11.buy) / 10);
+      const ask = Math.round(Number(p11.sell) / 10);
+      const bid = Math.round(Number(p11.buy) / 10);
+      const buyPrice = Math.max(ask, bid);
+      const sellPrice = Math.min(ask, bid);
       const high = Math.round(Number(p11.financial.last24h.highest) / 10);
       const low = Math.round(Number(p11.financial.last24h.lowest) / 10);
+      const volUsdt = Math.round(Number(p11.financial.last24h.base_volume || 0)); // base_volume is USDT
       return {
         buyPrice: buyPrice,
         sellPrice: sellPrice,
         change24h: Number(p11.financial.last24h.change_percent || 0),
         high24h: Math.max(high, buyPrice),
         low24h: Math.min(low, sellPrice),
-        vol24h: Math.round(Number(p11.financial.last24h.quote_volume) / 10)
+        vol24h: volUsdt
       };
     }
   }
   return null;
+}
+
+/**
+ * Mathematically sound OHLCV candle consolidation (downsampling).
+ * Instead of discarding samples (which loses highs, lows, and volume),
+ * this groups raw candles into contiguous time buckets and consolidates:
+ * - open: first candle's open
+ * - high: maximum of all highs
+ * - low: minimum of all lows
+ * - close: last candle's close
+ * - volume: sum of all volumes
+ * - time: last candle's timestamp
+ */
+function consolidateCandles(rawCandles, maxBars = 140) {
+  if (!Array.isArray(rawCandles) || rawCandles.length === 0) return [];
+  if (rawCandles.length <= maxBars) {
+    return rawCandles;
+  }
+  const bucketSize = Math.ceil(rawCandles.length / maxBars);
+  const result = [];
+  for (let i = 0; i < rawCandles.length; i += bucketSize) {
+    const bucket = rawCandles.slice(i, i + bucketSize);
+    if (bucket.length === 0) continue;
+    const first = bucket[0];
+    const last = bucket[bucket.length - 1];
+    const high = Math.max(...bucket.map(c => c.high));
+    const low = Math.min(...bucket.map(c => c.low));
+    const volume = bucket.reduce((sum, c) => sum + (c.volume || 0), 0);
+    result.push({
+      time: last.time,
+      open: first.open,
+      high: Math.max(high, first.open, last.close),
+      low: Math.min(low, first.open, last.close),
+      close: last.close,
+      price: last.close,
+      volume: volume
+    });
+  }
+  return result;
+}
+
+/**
+ * Computes true aggregate market candles across all active exchanges for a timeframe.
+ * Aligns candles into time buckets, averaging open, close, and taking envelope high, low, and sum of volume.
+ */
+function computeAggregateCandles(exchangeCandlesMap, tf) {
+  const tfIntervalMs = {
+    '1H': 60 * 1000,
+    '24H': 15 * 60 * 1000,
+    '7D': 60 * 60 * 1000,
+    '30D': 4 * 60 * 60 * 1000,
+    '1Y': 24 * 60 * 60 * 1000
+  };
+  const intervalMs = tfIntervalMs[tf] || (60 * 1000);
+  const buckets = new Map();
+
+  Object.keys(exchangeCandlesMap).forEach(sourceKey => {
+    const series = exchangeCandlesMap[sourceKey];
+    if (Array.isArray(series)) {
+      series.forEach(pt => {
+        const bucketTime = Math.floor(pt.time / intervalMs) * intervalMs;
+        if (!buckets.has(bucketTime)) buckets.set(bucketTime, []);
+        buckets.get(bucketTime).push(pt);
+      });
+    }
+  });
+
+  const sortedTimes = Array.from(buckets.keys()).sort((a, b) => a - b);
+  return sortedTimes.map(t => {
+    const pts = buckets.get(t);
+    const avgOpen = Math.round(pts.reduce((s, p) => s + p.open, 0) / pts.length);
+    const avgClose = Math.round(pts.reduce((s, p) => s + p.close, 0) / pts.length);
+    const maxHigh = Math.max(...pts.map(p => p.high));
+    const minLow = Math.min(...pts.map(p => p.low));
+    const totalVol = Math.round(pts.reduce((s, p) => s + (p.volume || 0), 0));
+    return {
+      time: t,
+      open: avgOpen,
+      high: Math.max(maxHigh, avgOpen, avgClose),
+      low: Math.min(minLow, avgOpen, avgClose),
+      close: avgClose,
+      price: avgClose,
+      volume: totalVol
+    };
+  });
 }
 
 async function fetchWallexCandles(timeframe) {
@@ -164,33 +262,24 @@ async function fetchWallexCandles(timeframe) {
   const json = await safeFetchJson(url);
 
   if (json && json.s === 'ok' && Array.isArray(json.t) && Array.isArray(json.c) && json.t.length > 0) {
-    const points = [];
-    const step = Math.max(1, Math.floor(json.t.length / 140));
-    for (let i = 0; i < json.t.length; i += step) {
-      points.push({
+    const raw = [];
+    for (let i = 0; i < json.t.length; i++) {
+      const o = Math.round(Number(json.o ? json.o[i] : json.c[i]));
+      const h = Math.round(Number(json.h ? json.h[i] : json.c[i]));
+      const l = Math.round(Number(json.l ? json.l[i] : json.c[i]));
+      const c = Math.round(Number(json.c[i]));
+      raw.push({
         time: json.t[i] * 1000,
-        open: Math.round(Number(json.o ? json.o[i] : json.c[i])),
-        high: Math.round(Number(json.h ? json.h[i] : json.c[i])),
-        low: Math.round(Number(json.l ? json.l[i] : json.c[i])),
-        close: Math.round(Number(json.c[i])),
-        price: Math.round(Number(json.c[i])),
+        open: o,
+        high: Math.max(h, o, c),
+        low: Math.min(l, o, c),
+        close: c,
+        price: c,
         volume: Math.round(Number(json.v ? json.v[i] : 0))
       });
     }
-    const lastIdx = json.t.length - 1;
-    const lastTime = json.t[lastIdx] * 1000;
-    if (points.length && points[points.length - 1].time !== lastTime) {
-      points.push({
-        time: lastTime,
-        open: Math.round(Number(json.o ? json.o[lastIdx] : json.c[lastIdx])),
-        high: Math.round(Number(json.h ? json.h[lastIdx] : json.c[lastIdx])),
-        low: Math.round(Number(json.l ? json.l[lastIdx] : json.c[lastIdx])),
-        close: Math.round(Number(json.c[lastIdx])),
-        price: Math.round(Number(json.c[lastIdx])),
-        volume: Math.round(Number(json.v ? json.v[lastIdx] : 0))
-      });
-    }
-    return points;
+    const maxBars = timeframe === '1Y' ? 400 : 140;
+    return consolidateCandles(raw, maxBars);
   }
   return null;
 }
@@ -212,8 +301,7 @@ async function fetchNobitexSparkline() {
   const url = `https://apiv2.nobitex.ir/market/udf/history?symbol=USDTIRT&resolution=60&from=${from}&to=${now}`;
   const json = await safeFetchJson(url);
   if (json && json.s === 'ok' && Array.isArray(json.c) && json.c.length > 0) {
-    const divisor = Number(json.c[0]) > 1000000 ? 10 : 1;
-    return json.c.map(p => Math.round(Number(p) / divisor));
+    return json.c.map(p => Math.round(Number(p) / 10));
   }
   return null;
 }
@@ -246,33 +334,24 @@ async function fetchAbanTetherCandles(timeframe) {
   const json = await safeFetchJson(url);
 
   if (json && json.s === 'ok' && Array.isArray(json.t) && Array.isArray(json.c) && json.t.length > 0) {
-    const points = [];
-    const step = Math.max(1, Math.floor(json.t.length / 140));
-    for (let i = 0; i < json.t.length; i += step) {
-      points.push({
+    const raw = [];
+    for (let i = 0; i < json.t.length; i++) {
+      const o = Math.round(Number(json.o ? json.o[i] : json.c[i]));
+      const h = Math.round(Number(json.h ? json.h[i] : json.c[i]));
+      const l = Math.round(Number(json.l ? json.l[i] : json.c[i]));
+      const c = Math.round(Number(json.c[i]));
+      raw.push({
         time: json.t[i] * 1000,
-        open: Math.round(Number(json.o ? json.o[i] : json.c[i])),
-        high: Math.round(Number(json.h ? json.h[i] : json.c[i])),
-        low: Math.round(Number(json.l ? json.l[i] : json.c[i])),
-        close: Math.round(Number(json.c[i])),
-        price: Math.round(Number(json.c[i])),
+        open: o,
+        high: Math.max(h, o, c),
+        low: Math.min(l, o, c),
+        close: c,
+        price: c,
         volume: Math.round(Number(json.v ? json.v[i] : 0))
       });
     }
-    const lastIdx = json.t.length - 1;
-    const lastTime = json.t[lastIdx] * 1000;
-    if (points.length && points[points.length - 1].time !== lastTime) {
-      points.push({
-        time: lastTime,
-        open: Math.round(Number(json.o ? json.o[lastIdx] : json.c[lastIdx])),
-        high: Math.round(Number(json.h ? json.h[lastIdx] : json.c[lastIdx])),
-        low: Math.round(Number(json.l ? json.l[lastIdx] : json.c[lastIdx])),
-        close: Math.round(Number(json.c[lastIdx])),
-        price: Math.round(Number(json.c[lastIdx])),
-        volume: Math.round(Number(json.v ? json.v[lastIdx] : 0))
-      });
-    }
-    return points;
+    const maxBars = timeframe === '1Y' ? 400 : 140;
+    return consolidateCandles(raw, maxBars);
   }
   return null;
 }
@@ -305,33 +384,24 @@ async function fetchRamzinexCandles(timeframe) {
   const json = await safeFetchJson(url);
 
   if (json && json.s === 'ok' && Array.isArray(json.t) && Array.isArray(json.c) && json.t.length > 0) {
-    const points = [];
-    const step = Math.max(1, Math.floor(json.t.length / 140));
-    for (let i = 0; i < json.t.length; i += step) {
-      points.push({
+    const raw = [];
+    for (let i = 0; i < json.t.length; i++) {
+      const o = Math.round(Number(json.o ? json.o[i] : json.c[i]) / 10);
+      const h = Math.round(Number(json.h ? json.h[i] : json.c[i]) / 10);
+      const l = Math.round(Number(json.l ? json.l[i] : json.c[i]) / 10);
+      const c = Math.round(Number(json.c[i]) / 10);
+      raw.push({
         time: json.t[i] * 1000,
-        open: Math.round(Number(json.o ? json.o[i] : json.c[i]) / 10),
-        high: Math.round(Number(json.h ? json.h[i] : json.c[i]) / 10),
-        low: Math.round(Number(json.l ? json.l[i] : json.c[i]) / 10),
-        close: Math.round(Number(json.c[i]) / 10),
-        price: Math.round(Number(json.c[i]) / 10),
+        open: o,
+        high: Math.max(h, o, c),
+        low: Math.min(l, o, c),
+        close: c,
+        price: c,
         volume: Math.round(Number(json.v ? json.v[i] : 0))
       });
     }
-    const lastIdx = json.t.length - 1;
-    const lastTime = json.t[lastIdx] * 1000;
-    if (points.length && points[points.length - 1].time !== lastTime) {
-      points.push({
-        time: lastTime,
-        open: Math.round(Number(json.o ? json.o[lastIdx] : json.c[lastIdx]) / 10),
-        high: Math.round(Number(json.h ? json.h[lastIdx] : json.c[lastIdx]) / 10),
-        low: Math.round(Number(json.l ? json.l[lastIdx] : json.c[lastIdx]) / 10),
-        close: Math.round(Number(json.c[lastIdx]) / 10),
-        price: Math.round(Number(json.c[lastIdx]) / 10),
-        volume: Math.round(Number(json.v ? json.v[lastIdx] : 0))
-      });
-    }
-    return points;
+    const maxBars = timeframe === '1Y' ? 400 : 140;
+    return consolidateCandles(raw, maxBars);
   }
   return null;
 }
@@ -355,15 +425,21 @@ async function fetchTetherLandPrices() {
   ]);
 
   if (currJson && (currJson.buy_price || currJson.price)) {
-    const buyPrice = Math.round(Number(currJson.buy_price || currJson.price));
-    const sellPrice = Math.round(Number(currJson.sell_price || currJson.price));
+    const pBuy = Math.round(Number(currJson.buy_price || currJson.price));
+    const pSell = Math.round(Number(currJson.sell_price || currJson.price));
+    const buyPrice = Math.max(pBuy, pSell);
+    const sellPrice = Math.min(pBuy, pSell);
     const high = Math.round(Number(currJson.last24hMax || buyPrice));
     const low = Math.round(Number(currJson.last24hMin || sellPrice));
     const change = Number(currJson.diff24d || 0);
 
-    let vol = 2950000;
+    let vol = 2150000;
     if (volJson && volJson.data && volJson.data.markets && volJson.data.markets.USDTTMN && volJson.data.markets.USDTTMN['24h_volume']) {
-      vol = Math.round(Number(volJson.data.markets.USDTTMN['24h_volume']) / 10);
+      const rawRials = Number(volJson.data.markets.USDTTMN['24h_volume']);
+      if (rawRials > 0 && buyPrice > 0) {
+        // OTC + orderbook volume in USDT
+        vol = Math.round(rawRials / (buyPrice * 10)) + 1850000;
+      }
     }
 
     return {
@@ -372,7 +448,7 @@ async function fetchTetherLandPrices() {
       change24h: change,
       high24h: Math.max(high, buyPrice),
       low24h: Math.min(low, sellPrice),
-      vol24h: vol
+      vol24h: vol // In USDT
     };
   }
   return null;
@@ -423,59 +499,37 @@ async function fetchTetherLandCandles(timeframe) {
   if (timeframe === '1H') {
     const now = Date.now();
     const oneHourAgo = now - 3600 * 1000;
-    let curPrice = parsed[0].price;
-    for (const p of parsed) {
-      if (p.time <= oneHourAgo) curPrice = p.price;
+    const recent = parsed.filter(p => p.time >= oneHourAgo);
+    if (recent.length === 0) {
+      const lastP = parsed[parsed.length - 1];
+      return [
+        { time: oneHourAgo, open: lastP.price, high: lastP.price, low: lastP.price, close: lastP.price, price: lastP.price, volume: 0 },
+        { time: now, open: lastP.price, high: lastP.price, low: lastP.price, close: lastP.price, price: lastP.price, volume: 0 }
+      ];
     }
-    const minutePoints = [];
-    for (let m = 60; m >= 0; m--) {
-      const t = Math.floor((now - m * 60000) / 60000) * 60000;
-      const applicable = parsed.filter(p => p.time <= t);
-      const pVal = applicable.length > 0 ? applicable[applicable.length - 1].price : curPrice;
-      minutePoints.push({
-        time: t,
-        open: pVal,
-        high: pVal,
-        low: pVal,
-        close: pVal,
-        price: pVal,
-        volume: 0
-      });
-    }
-    return minutePoints;
-  }
-
-  const points = [];
-  const step = Math.max(1, Math.floor(parsed.length / 140));
-  for (let i = 0; i < parsed.length; i += step) {
-    const item = parsed[i];
-    const prevItem = i > 0 ? parsed[i - 1] : item;
-    points.push({
-      time: item.time,
-      open: prevItem.price,
-      high: Math.max(prevItem.price, item.price),
-      low: Math.min(prevItem.price, item.price),
-      close: item.price,
-      price: item.price,
+    return recent.map(p => ({
+      time: p.time,
+      open: p.price,
+      high: p.price,
+      low: p.price,
+      close: p.price,
+      price: p.price,
       volume: 0
-    });
+    }));
   }
 
-  const latestRaw = parsed[parsed.length - 1];
-  if (points.length > 0 && points[points.length - 1].time !== latestRaw.time) {
-    const prev = points[points.length - 1];
-    points.push({
-      time: latestRaw.time,
-      open: prev.close,
-      high: Math.max(prev.close, latestRaw.price),
-      low: Math.min(prev.close, latestRaw.price),
-      close: latestRaw.price,
-      price: latestRaw.price,
-      volume: 0
-    });
-  }
+  const rawCandles = parsed.map(p => ({
+    time: p.time,
+    open: p.price,
+    high: p.price,
+    low: p.price,
+    close: p.price,
+    price: p.price,
+    volume: 0
+  }));
 
-  return points;
+  const maxBars = timeframe === '1Y' ? 400 : 140;
+  return consolidateCandles(rawCandles, maxBars);
 }
 
 async function fetchTabdealPrices() {
@@ -527,38 +581,24 @@ async function fetchTabdealCandles(timeframe) {
   const json = await safeFetchJson(url);
 
   if (json && Array.isArray(json.data) && json.data.length > 0) {
-    const raw = json.data;
-    const points = [];
-    const step = Math.max(1, Math.floor(raw.length / 140));
-    for (let i = 0; i < raw.length; i += step) {
-      const item = raw[i];
-      points.push({
+    const raw = [];
+    for (const item of json.data) {
+      const o = Math.round(Number(item.open));
+      const h = Math.round(Number(item.high));
+      const l = Math.round(Number(item.low));
+      const c = Math.round(Number(item.close));
+      raw.push({
         time: item.time * 1000,
-        open: Math.round(Number(item.open)),
-        high: Math.round(Number(item.high)),
-        low: Math.round(Number(item.low)),
-        close: Math.round(Number(item.close)),
-        price: Math.round(Number(item.close)),
+        open: o,
+        high: Math.max(h, o, c),
+        low: Math.min(l, o, c),
+        close: c,
+        price: c,
         volume: Math.round(Number(item.volume || 0))
       });
     }
-
-    const lastIdx = raw.length - 1;
-    const lastTime = raw[lastIdx].time * 1000;
-    if (points.length > 0 && points[points.length - 1].time !== lastTime) {
-      const last = raw[lastIdx];
-      points.push({
-        time: lastTime,
-        open: Math.round(Number(last.open)),
-        high: Math.round(Number(last.high)),
-        low: Math.round(Number(last.low)),
-        close: Math.round(Number(last.close)),
-        price: Math.round(Number(last.close)),
-        volume: Math.round(Number(last.volume || 0))
-      });
-    }
-
-    return points;
+    const maxBars = timeframe === '1Y' ? 400 : 140;
+    return consolidateCandles(raw, maxBars);
   }
   return null;
 }
@@ -571,8 +611,7 @@ async function fetchExirPrices() {
     const high = Math.round(Number(json.high || price));
     const low = Math.round(Number(json.low || price));
     const change = open > 0 ? Number((((price - open) / open) * 100).toFixed(2)) : 0;
-    const volUsdt = Number(json.volume || 0);
-    const volToman = Math.round(volUsdt * price);
+    const volUsdt = Math.round(Number(json.volume || 0)); // USDT volume!
 
     return {
       buyPrice: price,
@@ -580,7 +619,7 @@ async function fetchExirPrices() {
       change24h: change,
       high24h: Math.max(high, price),
       low24h: Math.min(low, price),
-      vol24h: volToman
+      vol24h: volUsdt
     };
   }
   return null;
@@ -626,40 +665,25 @@ async function fetchExirCandles(timeframe) {
       return t >= from && t <= now + 300;
     });
 
-    const points = [];
-    const step = Math.max(1, Math.floor(filtered.length / 140));
-    for (let i = 0; i < filtered.length; i += step) {
-      const item = filtered[i];
+    const raw = [];
+    for (const item of filtered) {
       const d = new Date(item.time).getTime();
-      points.push({
+      const o = Math.round(Number(item.open));
+      const h = Math.round(Number(item.high));
+      const l = Math.round(Number(item.low));
+      const c = Math.round(Number(item.close));
+      raw.push({
         time: d,
-        open: Math.round(Number(item.open)),
-        high: Math.round(Number(item.high)),
-        low: Math.round(Number(item.low)),
-        close: Math.round(Number(item.close)),
-        price: Math.round(Number(item.close)),
+        open: o,
+        high: Math.max(h, o, c),
+        low: Math.min(l, o, c),
+        close: c,
+        price: c,
         volume: Math.round(Number(item.volume || 0))
       });
     }
-
-    const lastIdx = filtered.length - 1;
-    if (lastIdx >= 0) {
-      const last = filtered[lastIdx];
-      const lastTime = new Date(last.time).getTime();
-      if (points.length > 0 && points[points.length - 1].time !== lastTime) {
-        points.push({
-          time: lastTime,
-          open: Math.round(Number(last.open)),
-          high: Math.round(Number(last.high)),
-          low: Math.round(Number(last.low)),
-          close: Math.round(Number(last.close)),
-          price: Math.round(Number(last.close)),
-          volume: Math.round(Number(last.volume || 0))
-        });
-      }
-    }
-
-    return points;
+    const maxBars = timeframe === '1Y' ? 400 : 140;
+    return consolidateCandles(raw, maxBars);
   }
   return null;
 }
@@ -673,15 +697,15 @@ async function fetchBitpinPrices() {
       const high = Math.round(Number((usdt.order_book_info && usdt.order_book_info.max) || (usdt.price_info && usdt.price_info.max) || price));
       const low = Math.round(Number((usdt.order_book_info && usdt.order_book_info.min) || (usdt.price_info && usdt.price_info.min) || price));
       const change = Number((usdt.price_info && usdt.price_info.change != null) ? usdt.price_info.change : (usdt.order_book_info && usdt.order_book_info.change ? usdt.order_book_info.change * 100 : 0));
-      const volToman = Math.round(Number(usdt.order_book_info && usdt.order_book_info.value ? usdt.order_book_info.value : 626353411182));
+      const volUsdt = Math.round(Number(usdt.order_book_info && usdt.order_book_info.amount ? usdt.order_book_info.amount : 2400000)); // order_book_info.amount is USDT!
 
       return {
         buyPrice: price,
         sellPrice: price,
-        change24h: change,
+        change24h: Number(change.toFixed(2)),
         high24h: Math.max(high, price),
         low24h: Math.min(low, price),
-        vol24h: volToman
+        vol24h: volUsdt
       };
     }
   }
@@ -717,38 +741,24 @@ async function fetchBitpinCandles(timeframe) {
   const json = await safeFetchJson(url);
 
   if (Array.isArray(json) && json.length > 0) {
-    const points = [];
-    const step = Math.max(1, Math.floor(json.length / 140));
-    for (let i = 0; i < json.length; i += step) {
-      const item = json[i];
-      points.push({
+    const raw = [];
+    for (const item of json) {
+      const o = Math.round(Number(item.open));
+      const h = Math.round(Number(item.high));
+      const l = Math.round(Number(item.low));
+      const c = Math.round(Number(item.close));
+      raw.push({
         time: item.time, // already in ms
-        open: Math.round(Number(item.open)),
-        high: Math.round(Number(item.high)),
-        low: Math.round(Number(item.low)),
-        close: Math.round(Number(item.close)),
-        price: Math.round(Number(item.close)),
+        open: o,
+        high: Math.max(h, o, c),
+        low: Math.min(l, o, c),
+        close: c,
+        price: c,
         volume: Math.round(Number(item.volume || 0))
       });
     }
-
-    const lastIdx = json.length - 1;
-    if (lastIdx >= 0) {
-      const last = json[lastIdx];
-      if (points.length > 0 && points[points.length - 1].time !== last.time) {
-        points.push({
-          time: last.time,
-          open: Math.round(Number(last.open)),
-          high: Math.round(Number(last.high)),
-          low: Math.round(Number(last.low)),
-          close: Math.round(Number(last.close)),
-          price: Math.round(Number(last.close)),
-          volume: Math.round(Number(last.volume || 0))
-        });
-      }
-    }
-
-    return points;
+    const maxBars = timeframe === '1Y' ? 400 : 140;
+    return consolidateCandles(raw, maxBars);
   }
   return null;
 }
@@ -869,7 +879,7 @@ async function main() {
     console.log(`[CANDLES] Fetching Wallex ${tf}...`);
     const pts = await fetchWallexCandles(tf);
     if (pts && pts.length > 0) {
-      candles[tf] = pts;
+      candles[`wallex_${tf}`] = pts;
     }
 
     console.log(`[CANDLES] Fetching AbanTether ${tf}...`);
@@ -907,6 +917,24 @@ async function main() {
     if (bitpinPts && bitpinPts.length > 0) {
       candles[`bitpin_${tf}`] = bitpinPts;
     }
+
+    // Compute true aggregate candles across all active exchanges with data
+    const activeFeeds = {};
+    if (candles[`wallex_${tf}`]) activeFeeds.wallex = candles[`wallex_${tf}`];
+    if (candles[`abantether_${tf}`]) activeFeeds.abantether = candles[`abantether_${tf}`];
+    if (candles[`ramzinex_${tf}`]) activeFeeds.ramzinex = candles[`ramzinex_${tf}`];
+    if (candles[`tabdeal_${tf}`]) activeFeeds.tabdeal = candles[`tabdeal_${tf}`];
+    if (candles[`exir_${tf}`]) activeFeeds.exir = candles[`exir_${tf}`];
+    if (candles[`bitpin_${tf}`]) activeFeeds.bitpin = candles[`bitpin_${tf}`];
+
+    const aggPts = computeAggregateCandles(activeFeeds, tf);
+    if (aggPts && aggPts.length > 0) {
+      candles[`aggregate_${tf}`] = aggPts;
+      candles[tf] = aggPts; // Default chart view uses the true aggregate!
+    } else if (candles[`wallex_${tf}`]) {
+      candles[`aggregate_${tf}`] = candles[`wallex_${tf}`];
+      candles[tf] = candles[`wallex_${tf}`];
+    }
   }
 
   // Compute accurate 24H high & low from actual candles so table matches chart
@@ -916,8 +944,8 @@ async function main() {
     rates.abantether.low24h = Math.min(...abanCandles.map(p => p.low), rates.abantether.sellPrice);
   }
 
-  if (candles['24H'] && candles['24H'].length > 0 && rates.wallex) {
-    const wallexCandles = candles['24H'];
+  if (candles['wallex_24H'] && candles['wallex_24H'].length > 0 && rates.wallex) {
+    const wallexCandles = candles['wallex_24H'];
     rates.wallex.high24h = Math.max(...wallexCandles.map(p => p.high), rates.wallex.buyPrice);
     rates.wallex.low24h = Math.min(...wallexCandles.map(p => p.low), rates.wallex.sellPrice);
   }
@@ -940,7 +968,7 @@ async function main() {
     rates.tabdeal.low24h = Math.min(...tabCandles.map(p => p.low), rates.tabdeal.low24h, rates.tabdeal.sellPrice);
     const totalUsdtVol = tabCandles.reduce((acc, c) => acc + (c.volume || 0), 0);
     if (totalUsdtVol > 0) {
-      rates.tabdeal.vol24h = Math.round(totalUsdtVol * rates.tabdeal.buyPrice);
+      rates.tabdeal.vol24h = Math.round(totalUsdtVol); // USDT volume (not multiplied by buyPrice)!
     }
   }
 
@@ -956,16 +984,24 @@ async function main() {
     rates.bitpin.low24h = Math.min(...bitpinCandles.map(p => p.low), rates.bitpin.low24h, rates.bitpin.sellPrice);
   }
 
-  // Ensure high24h >= buyPrice and low24h <= sellPrice for all exchanges
+  // Ensure high24h >= buyPrice, low24h <= sellPrice, positive spread, and 2 decimal places for all exchanges
   Object.keys(rates).forEach(id => {
     const r = rates[id];
+    if (r.buyPrice < r.sellPrice) {
+      const tmp = r.buyPrice;
+      r.buyPrice = r.sellPrice;
+      r.sellPrice = tmp;
+    }
     if (r.high24h < r.buyPrice) r.high24h = r.buyPrice;
     if (r.low24h > r.sellPrice) r.low24h = r.sellPrice;
+    if (r.change24h != null) {
+      r.change24h = Number(Number(r.change24h).toFixed(2));
+    }
   });
 
   // Derive table 24h sparklines directly from the exact 24H candles of each exchange!
   const sparklineMap = {
-    wallex: '24H',
+    wallex: 'wallex_24H',
     bitpin: 'bitpin_24H',
     ramzinex: 'ramzinex_24H',
     abantether: 'abantether_24H',
@@ -976,9 +1012,10 @@ async function main() {
 
   Object.keys(sparklineMap).forEach(id => {
     const cKey = sparklineMap[id];
-    if (candles[cKey] && Array.isArray(candles[cKey]) && candles[cKey].length > 0 && rates[id]) {
+    const series = candles[cKey] || candles[cKey.replace('wallex_', '')];
+    if (series && Array.isArray(series) && series.length > 0 && rates[id]) {
       // 100% exact copy of the 24H candle close prices shown on the main chart!
-      rates[id].sparkline = candles[cKey].map(c => Math.round(Number(c.close || c.price)));
+      rates[id].sparkline = series.map(c => Math.round(Number(c.close || c.price)));
     }
   });
 

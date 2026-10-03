@@ -3,7 +3,7 @@
    Caches static assets for offline capability and instant loading
    ========================================================================== */
 
-const CACHE_NAME = 'tetro-pwa-v17';
+const CACHE_NAME = 'tetro-pwa-v18';
 const ASSETS_TO_CACHE = [
   './',
   './index.html',
@@ -14,10 +14,10 @@ const ASSETS_TO_CACHE = [
   './css/components.css?v=4',
   './css/chart.css?v=4',
   './js/theme-engine.js',
-  './js/data-adapter.js?v=7',
-  './js/chart-engine.js?v=4',
-  './js/ui-renderer.js?v=7',
-  './js/app.js?v=7',
+  './js/data-adapter.js?v=8',
+  './js/chart-engine.js?v=5',
+  './js/ui-renderer.js?v=8',
+  './js/app.js?v=8',
   './assets/icon.svg',
   './assets/icons/icon-192.png',
   './assets/icons/icon-512.png',

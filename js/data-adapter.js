@@ -181,30 +181,59 @@ class DataAdapter {
     const list = this.getExchangeRates().filter(r => !r.isGlobal);
     if (!list.length) return null;
 
-    let totalBuy = 0;
-    let totalSell = 0;
+    // Filter valid prices in normal reasonable range
+    const valid = list.filter(r => typeof r.buyPrice === 'number' && r.buyPrice > 50000 && r.buyPrice < 500000);
+    if (!valid.length) return null;
+
+    // Calculate median buy price for outlier rejection
+    const sortedBuys = valid.map(r => r.buyPrice).sort((a, b) => a - b);
+    const mid = Math.floor(sortedBuys.length / 2);
+    const medianBuy = sortedBuys.length % 2 !== 0 ? sortedBuys[mid] : (sortedBuys[mid - 1] + sortedBuys[mid]) / 2;
+
+    // Exclude any price with > 8% deviation from median
+    const nonOutliers = valid.filter(r => Math.abs(r.buyPrice - medianBuy) / medianBuy <= 0.08);
+    const pool = nonOutliers.length > 0 ? nonOutliers : valid;
+
+    // Calculate Volume-Weighted Average Price (VWAP)
+    let totalWeight = 0;
+    let weightedBuy = 0;
+    let weightedSell = 0;
+    let weightedChange = 0;
     let totalVol = 0;
     let minLow = Infinity;
     let maxHigh = -Infinity;
-    let avgChange = 0;
 
-    list.forEach(item => {
-      totalBuy += item.buyPrice;
-      totalSell += item.sellPrice;
-      totalVol += item.vol24h;
+    pool.forEach(item => {
+      const vol = Math.max(1, Number(item.vol24h) || 1000000);
+      totalWeight += vol;
+      weightedBuy += item.buyPrice * vol;
+      weightedSell += item.sellPrice * vol;
+      weightedChange += (Number(item.change24h) || 0) * vol;
+      totalVol += (Number(item.vol24h) || 0);
+
       if (item.low24h < minLow) minLow = item.low24h;
       if (item.high24h > maxHigh) maxHigh = item.high24h;
-      avgChange += item.change24h;
     });
 
-    const count = list.length;
+    let avgBuy = totalWeight > 0 ? Math.round(weightedBuy / totalWeight) : Math.round(medianBuy);
+    let avgSell = totalWeight > 0 ? Math.round(weightedSell / totalWeight) : Math.round(medianBuy - 50);
+
+    // Guaranteed spread integrity
+    if (avgBuy < avgSell) {
+      const tmp = avgBuy;
+      avgBuy = avgSell;
+      avgSell = tmp;
+    }
+
+    const avgChange = totalWeight > 0 ? Number((weightedChange / totalWeight).toFixed(2)) : 0;
+
     return {
-      avgBuy: Math.round(totalBuy / count),
-      avgSell: Math.round(totalSell / count),
+      avgBuy,
+      avgSell,
       totalVolume: totalVol,
-      high24h: maxHigh,
-      low24h: minLow,
-      change24h: Number((avgChange / count).toFixed(2))
+      high24h: maxHigh !== -Infinity ? maxHigh : avgBuy,
+      low24h: minLow !== Infinity ? minLow : avgSell,
+      change24h: avgChange
     };
   }
 
@@ -234,11 +263,49 @@ class DataAdapter {
     this.notify({ type: 'currency_change', currency: curr });
   }
 
-  // Live historical candle data fetcher (with real Wallex and Nobitex UDF integration)
+  consolidateCandles(rawCandles, maxBars = 140) {
+    if (!Array.isArray(rawCandles) || rawCandles.length === 0) return [];
+    if (rawCandles.length <= maxBars) return rawCandles;
+    const bucketSize = Math.ceil(rawCandles.length / maxBars);
+    const result = [];
+    for (let i = 0; i < rawCandles.length; i += bucketSize) {
+      const bucket = rawCandles.slice(i, i + bucketSize);
+      if (bucket.length === 0) continue;
+      const first = bucket[0];
+      const last = bucket[bucket.length - 1];
+      const high = Math.max(...bucket.map(c => c.high));
+      const low = Math.min(...bucket.map(c => c.low));
+      const volume = bucket.reduce((sum, c) => sum + (c.volume || 0), 0);
+      result.push({
+        time: last.time,
+        open: first.open,
+        high: Math.max(high, first.open, last.close),
+        low: Math.min(low, first.open, last.close),
+        close: last.close,
+        price: last.close,
+        volume: volume,
+        label: last.label
+      });
+    }
+    return result;
+  }
+
+  // Live historical candle data fetcher
   async getHistory(timeframe = '24H', sourceId = 'aggregate') {
     const cacheKey = `${sourceId}_${timeframe}`;
     if (this.historyCache.has(cacheKey)) {
       return this.historyCache.get(cacheKey);
+    }
+
+    // 1. When source is Aggregate: return the true pre-computed market aggregate candles
+    if (sourceId === 'aggregate') {
+      const aggKey = `aggregate_${timeframe}`;
+      if (this.historyCache.has(aggKey) && this.historyCache.get(aggKey).length > 0) {
+        return this.historyCache.get(aggKey);
+      }
+      if (this.historyCache.has(timeframe) && this.historyCache.get(timeframe).length > 0) {
+        return this.historyCache.get(timeframe);
+      }
     }
 
     const tfMap = {
@@ -254,8 +321,8 @@ class DataAdapter {
 
     const isLocal = typeof window !== 'undefined' && (window.location.hostname === 'localhost' || window.location.hostname === '127.0.0.1');
 
-    // 1. When source is Wallex or Aggregate:
-    if (sourceId === 'wallex' || sourceId === 'aggregate') {
+    // 2. When source is Wallex:
+    if (sourceId === 'wallex') {
       if (isLocal) {
         try {
           const targetUrl = `https://api.wallex.ir/v1/udf/history?symbol=USDTTMN&resolution=${cfg.resolution}&from=${from}&to=${now}`;
@@ -268,42 +335,29 @@ class DataAdapter {
             if (res.ok) {
               const json = await res.json();
               if (json.s === 'ok' && Array.isArray(json.t) && Array.isArray(json.c) && json.t.length > 0) {
-                const points = [];
-                const step = Math.max(1, Math.floor(json.t.length / 140));
-                for (let i = 0; i < json.t.length; i += step) {
+                const raw = [];
+                for (let i = 0; i < json.t.length; i++) {
                   const d = new Date(json.t[i] * 1000);
                   const open = Math.round(Number(json.o ? json.o[i] : json.c[i]));
                   const high = Math.round(Number(json.h ? json.h[i] : json.c[i]));
                   const low = Math.round(Number(json.l ? json.l[i] : json.c[i]));
                   const close = Math.round(Number(json.c[i]));
                   const vol = Math.round(Number(json.v ? json.v[i] : 0));
-                  points.push({
+                  raw.push({
                     time: d,
                     open: open,
-                    high: high,
-                    low: low,
+                    high: Math.max(high, open, close),
+                    low: Math.min(low, open, close),
                     close: close,
                     price: close,
                     volume: vol,
                     label: this.formatTimeLabel(d, timeframe)
                   });
                 }
-                const lastIdx = json.t.length - 1;
-                const lastTime = new Date(json.t[lastIdx] * 1000);
-                if (points.length && points[points.length - 1].time.getTime() !== lastTime.getTime()) {
-                  points.push({
-                    time: lastTime,
-                    open: Math.round(Number(json.o ? json.o[lastIdx] : json.c[lastIdx])),
-                    high: Math.round(Number(json.h ? json.h[lastIdx] : json.c[lastIdx])),
-                    low: Math.round(Number(json.l ? json.l[lastIdx] : json.c[lastIdx])),
-                    close: Math.round(Number(json.c[lastIdx])),
-                    price: Math.round(Number(json.c[lastIdx])),
-                    volume: Math.round(Number(json.v ? json.v[lastIdx] : 0)),
-                    label: this.formatTimeLabel(lastTime, timeframe)
-                  });
-                }
-
+                const maxBars = timeframe === '1Y' ? 400 : 140;
+                const points = this.consolidateCandles(raw, maxBars);
                 this.historyCache.set(cacheKey, points);
+                this.historyCache.set(`wallex_${timeframe}`, points);
                 return points;
               }
             }
@@ -313,18 +367,13 @@ class DataAdapter {
         }
       }
 
-      // If Wallex history fetch fails or is CORS-blocked, preserve existing valid cached data!
       if (this.historyCache.has(cacheKey) && this.historyCache.get(cacheKey).length > 0) {
         return this.historyCache.get(cacheKey);
       }
       if (this.historyCache.has(`wallex_${timeframe}`) && this.historyCache.get(`wallex_${timeframe}`).length > 0) {
         return this.historyCache.get(`wallex_${timeframe}`);
       }
-      if (this.historyCache.has(`aggregate_${timeframe}`) && this.historyCache.get(`aggregate_${timeframe}`).length > 0) {
-        return this.historyCache.get(`aggregate_${timeframe}`);
-      }
 
-      // If no data exists at all, show status message
       const emptyWallex = [];
       emptyWallex.noData = true;
       emptyWallex.source = sourceId;
@@ -995,8 +1044,8 @@ class DataAdapter {
 
       const wallexRate = this.rates.get('wallex');
       if (wallexRate) {
-        const newBuy = bid || last;
-        const newSell = ask || last;
+        const newBuy = Math.max(ask, bid) || last; // user buys from ask
+        const newSell = Math.min(ask, bid) || last; // user sells to bid
         if (newBuy > 0 && (newBuy !== wallexRate.buyPrice || newSell !== wallexRate.sellPrice)) {
           const dir = newBuy > wallexRate.buyPrice ? 'up' : (newBuy < wallexRate.buyPrice ? 'down' : 'none');
           wallexRate.buyPrice = newBuy;
@@ -1034,11 +1083,13 @@ class DataAdapter {
       if (!pair) return;
 
       // Nobitex returns IRR (Rials) -> convert to Toman by dividing by 10
-      const buyPrice = Math.round(Number(pair.bestBuy) / 10);
-      const sellPrice = Math.round(Number(pair.bestSell) / 10);
+      const ask = Math.round(Number(pair.bestSell || pair.latest) / 10);
+      const bid = Math.round(Number(pair.bestBuy || pair.latest) / 10);
+      const buyPrice = Math.max(ask, bid); // user buys from lowest ask
+      const sellPrice = Math.min(ask, bid); // user sells to highest bid
       const lastPrice = Math.round(Number(pair.latest) / 10);
       const change24h = Number(pair.dayChange || 0);
-      const vol24h = Math.round(Number(pair.volumeSrc || 0));
+      const vol24h = Math.round(Number(pair.volumeSrc || 0)); // volumeSrc is USDT!
       const high24h = Math.round(Number(pair.dayHigh) / 10);
       const low24h = Math.round(Number(pair.dayLow) / 10);
 
@@ -1111,8 +1162,7 @@ class DataAdapter {
       if (!res.ok) return;
       const json = await res.json();
       if (json.s === 'ok' && Array.isArray(json.c) && json.c.length > 0) {
-        const divisor = Number(json.c[0]) > 1000000 ? 10 : 1;
-        const prices = json.c.map(p => Math.round(Number(p) / divisor));
+        const prices = json.c.map(p => Math.round(Number(p) / 10)); // Nobitex is always IRR, divide by 10!
         const nobitexRate = this.rates.get('nobitex');
         if (nobitexRate) {
           nobitexRate.sparkline = prices;
@@ -1139,14 +1189,15 @@ class DataAdapter {
       const res = await fetch(fetchUrl);
       if (!res.ok) return;
       const json = await res.json();
-      if (!json || !json.results || !json.results.USDT_IRT) return;
-      const bp = json.results.USDT_IRT;
-      const price = Math.round(Number(bp.price));
-      const high = Math.round(Number(bp.order_book_info?.max || price));
-      const low = Math.round(Number(bp.order_book_info?.min || price));
-      const ch24h = Number(bp.price_info?.change || 0);
-      const volRial = Number(bp.order_book_info?.value || 0);
-      const volToman = Math.round(volRial / 10);
+      const list = Array.isArray(json) ? json : (json?.results ? (Array.isArray(json.results) ? json.results : Object.values(json.results)) : []);
+      const bp = list.find(p => p.code === 'USDT_IRT');
+      if (!bp) return;
+
+      const price = Math.round(Number(bp.price || bp.order_book_info?.price));
+      const high = Math.round(Number(bp.order_book_info?.max || bp.price_info?.max || price));
+      const low = Math.round(Number(bp.order_book_info?.min || bp.price_info?.min || price));
+      const ch24h = Number((bp.price_info && bp.price_info.change != null) ? bp.price_info.change : (bp.order_book_info?.change ? bp.order_book_info.change * 100 : 0));
+      const volUsdt = Math.round(Number(bp.order_book_info?.amount || 2400000)); // order_book_info.amount is USDT!
 
       const bpRate = this.rates.get('bitpin');
       if (bpRate && price > 0) {
@@ -1157,7 +1208,7 @@ class DataAdapter {
           bpRate.change24h = Number(Number(ch24h).toFixed(2));
           bpRate.high24h = high;
           bpRate.low24h = low;
-          bpRate.vol24h = volToman;
+          bpRate.vol24h = volUsdt;
           bpRate.lastUpdate = new Date();
           bpRate.lastDirection = dir;
 

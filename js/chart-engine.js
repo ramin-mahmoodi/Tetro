@@ -95,11 +95,20 @@ class ChartEngine {
     const max = Math.max(...prices);
     const latest = prices[prices.length - 1];
 
+    let displayedPrice = latest;
+    if (this.source === 'aggregate') {
+      const stats = window.dataAdapter ? window.dataAdapter.getAggregateStats() : null;
+      if (stats && stats.avgBuy) displayedPrice = stats.avgBuy;
+    } else {
+      const rate = window.dataAdapter ? window.dataAdapter.rates.get(this.source) : null;
+      if (rate && rate.buyPrice) displayedPrice = rate.buyPrice;
+    }
+
     const currentEl = document.getElementById('chart-current-price');
     const minEl = document.getElementById('chart-min-price');
     const maxEl = document.getElementById('chart-max-price');
 
-    if (currentEl) currentEl.textContent = window.dataAdapter.formatPrice(latest);
+    if (currentEl) currentEl.textContent = window.dataAdapter.formatPrice(displayedPrice);
     if (minEl) minEl.textContent = window.dataAdapter.formatPrice(min);
     if (maxEl) maxEl.textContent = window.dataAdapter.formatPrice(max);
   }

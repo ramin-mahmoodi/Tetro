@@ -110,7 +110,7 @@ class UIRenderer {
       metricLowEl.textContent = window.dataAdapter.formatPrice(stats.low24h);
     }
     if (metricVolEl) {
-      metricVolEl.textContent = `${(stats.totalVolume / 1000000).toFixed(1)}M USDT`;
+      metricVolEl.textContent = `${(stats.totalVolume / 1000000).toFixed(2)}M USDT`;
     }
   }
 
