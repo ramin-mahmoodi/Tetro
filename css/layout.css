@@ -311,6 +311,8 @@
     height: 24px;
     display: block;
     object-fit: contain;
+    background-color: var(--bg1);
+    border-radius: 50%;
   }
 
   .mobile-header-actions {
