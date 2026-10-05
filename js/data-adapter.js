@@ -63,7 +63,8 @@ class DataAdapter {
         high24h: null,
         low24h: null,
         sparkline: [],
-        lastUpdate: new Date(),
+        lastUpdate: null,
+        isLivePolled: false,
         lastDirection: 'none'
       });
     });
@@ -142,7 +143,7 @@ class DataAdapter {
         const item = data.rates[id];
         const current = this.rates.get(id);
         if (current && item) {
-          const isLiveNewer = current.lastUpdate && (current.lastUpdate.getTime() > snapshotTime);
+          const isLiveNewer = current.buyPrice !== null && current.isLivePolled && current.lastUpdate && (current.lastUpdate.getTime() > snapshotTime);
           if (!isLiveNewer) {
             current.status = item.status || 'live';
             current.lastSuccessAt = item.lastSuccessAt || null;
@@ -153,6 +154,7 @@ class DataAdapter {
             current.low24h = item.low24h != null ? item.low24h : current.low24h;
             current.vol24h = item.vol24h != null ? item.vol24h : current.vol24h;
             current.lastUpdate = new Date(snapshotTime || Date.now());
+            current.isLivePolled = false;
           }
           if (Array.isArray(item.sparkline) && item.sparkline.length > 0) {
             current.sparkline = item.sparkline;
@@ -447,6 +449,7 @@ class DataAdapter {
           wallexRate.high24h = high;
           wallexRate.low24h = low;
           wallexRate.lastUpdate = new Date();
+          wallexRate.isLivePolled = true;
           wallexRate.lastDirection = dir;
 
           this.notify({
@@ -501,6 +504,7 @@ class DataAdapter {
           nobitexRate.high24h = high24h;
           nobitexRate.low24h = low24h;
           nobitexRate.lastUpdate = new Date();
+          nobitexRate.isLivePolled = true;
           nobitexRate.lastDirection = dir;
 
           this.notify({
@@ -630,6 +634,7 @@ class DataAdapter {
           bpRate.low24h = low;
           bpRate.vol24h = volUsdt;
           bpRate.lastUpdate = new Date();
+          bpRate.isLivePolled = true;
           bpRate.lastDirection = dir;
 
           this.notify({

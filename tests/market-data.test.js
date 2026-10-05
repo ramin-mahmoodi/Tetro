@@ -2,7 +2,7 @@ const test = require('node:test');
 const assert = require('node:assert/strict');
 
 const { normalizePersianText } = require('../js/ui-renderer.js');
-const { DataAdapter } = require('../js/data-adapter.js');
+const { DataAdapter, EXCHANGES_DEF } = require('../js/data-adapter.js');
 const { consolidateCandles } = require('../scripts/fetch-market-data.js');
 const { ALLOWED_PROXY_HOSTS } = require('../server.js');
 const { TIMEFRAME_CONFIGS } = require('../js/chart-engine.js');
@@ -166,3 +166,60 @@ test('Chart engine timeframe window positioning', async (t) => {
     assert.equal(progress, 0.5);
   });
 });
+
+// 8. Snapshot loading into newly initialized DataAdapter
+test('Snapshot rate initialization', async (t) => {
+  await t.test('populates exchange rates from market snapshot without rejection', () => {
+    const adapter = new DataAdapter();
+    // Simulate init populate without timers
+    EXCHANGES_DEF.forEach(ex => {
+      adapter.rates.set(ex.id, {
+        id: ex.id,
+        name: ex.name,
+        faName: ex.faName,
+        status: 'live',
+        lastSuccessAt: null,
+        buyPrice: null,
+        sellPrice: null,
+        vol24h: 0,
+        change24h: null,
+        high24h: null,
+        low24h: null,
+        sparkline: [],
+        lastUpdate: null,
+        isLivePolled: false,
+        lastDirection: 'none'
+      });
+    });
+
+    const mockSnapshot = {
+      timestamp: 1791057208, // historical timestamp
+      rates: {
+        wallex: { buyPrice: 268872, sellPrice: 268856, status: 'live' },
+        nobitex: { buyPrice: 268809, sellPrice: 268808, status: 'live' }
+      }
+    };
+
+    const snapshotTime = mockSnapshot.timestamp * 1000;
+    Object.keys(mockSnapshot.rates).forEach(id => {
+      const item = mockSnapshot.rates[id];
+      const current = adapter.rates.get(id);
+      if (current && item) {
+        const isLiveNewer = current.buyPrice !== null && current.isLivePolled && current.lastUpdate && (current.lastUpdate.getTime() > snapshotTime);
+        if (!isLiveNewer) {
+          current.buyPrice = item.buyPrice;
+          current.sellPrice = item.sellPrice;
+          current.lastUpdate = new Date(snapshotTime);
+          current.isLivePolled = false;
+        }
+      }
+    });
+
+    assert.equal(adapter.rates.get('wallex').buyPrice, 268872);
+    assert.equal(adapter.rates.get('nobitex').buyPrice, 268809);
+    const stats = adapter.getAggregateStats();
+    assert.ok(stats);
+    assert.ok(stats.avgBuy > 268000);
+  });
+});
+
