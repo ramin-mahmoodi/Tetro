@@ -373,7 +373,7 @@
   width: 100%;
   border: 1px solid var(--bgInverse);
   background-color: var(--bg1);
-  margin-bottom: 40px;
+  margin-bottom: 0;
 }
 
 /* Desktop Header Row */
@@ -571,7 +571,7 @@
     display: flex;
     flex-direction: column;
     gap: 12px;
-    margin-bottom: 30px;
+    margin-bottom: 0;
   }
 
   .exchanges-table-head {

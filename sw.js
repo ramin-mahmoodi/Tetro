@@ -3,15 +3,15 @@
    Caches static assets for offline capability and instant loading
    ========================================================================== */
 
-const CACHE_NAME = 'tetro-pwa-v24';
+const CACHE_NAME = 'tetro-pwa-v25';
 const ASSETS_TO_CACHE = [
   './',
   './index.html',
   './manifest.json',
   './css/tokens.css?v=5',
   './css/themes.css?v=5',
-  './css/layout.css?v=7',
-  './css/components.css?v=5',
+  './css/layout.css?v=8',
+  './css/components.css?v=6',
   './css/chart.css?v=5',
   './css/phosphor.css',
   './assets/fonts/Phosphor.woff2',

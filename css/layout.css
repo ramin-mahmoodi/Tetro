@@ -226,7 +226,7 @@
 
 .hyp-wrapper {
   margin: 0 auto;
-  padding: 40px 50px 80px 50px;
+  padding: 40px 50px 30px 50px;
   width: 100%;
   max-width: 1600px;
   box-sizing: border-box;
@@ -250,7 +250,7 @@
     grid-template-columns: 80px 14px 1fr;
   }
   .hyp-wrapper {
-    padding: 30px 25px 80px 25px;
+    padding: 30px 25px 30px 25px;
   }
 }
 
@@ -275,7 +275,7 @@
   }
 
   .hyp-wrapper {
-    padding: 16px 16px 96px 16px;
+    padding: 16px 16px 72px 16px;
     width: 100%;
     max-width: 100%;
     box-sizing: border-box;
