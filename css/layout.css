@@ -306,12 +306,11 @@
     letter-spacing: 1px;
     direction: ltr;
   }
-  .mobile-brand .badge {
-    font-size: 10px;
-    padding: 2px 6px;
-    background-color: var(--accent1);
-    color: var(--bg1);
-    font-weight: 800;
+  .mobile-brand-icon {
+    width: 24px;
+    height: 24px;
+    display: block;
+    object-fit: contain;
   }
 
   .mobile-header-actions {
