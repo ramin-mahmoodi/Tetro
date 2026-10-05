@@ -16,8 +16,9 @@ document.addEventListener('DOMContentLoaded', () => {
   // 4. Initialize UI Renderer
   window.uiRenderer.init();
 
-  // 5. Setup Mobile Bottom Nav Interaction
+  // 5. Setup Mobile Bottom Nav & Desktop Rail Interactions
   setupMobileNav();
+  setupRailNav();
 
   // 6. Setup Keyboard Shortcuts
   setupKeyboardShortcuts();
@@ -74,6 +75,27 @@ function setupKeyboardShortcuts() {
   });
 }
 
+// Desktop Rail Nav Handling
+function setupRailNav() {
+  const railLinks = document.querySelectorAll('.hyp-menu-links a');
+  railLinks.forEach(item => {
+    item.addEventListener('click', (e) => {
+      const href = item.getAttribute('href');
+      if (href && href.startsWith('#')) {
+        e.preventDefault();
+        railLinks.forEach(i => i.classList.remove('active'));
+        item.classList.add('active');
+        if (href === '#' || href === '') {
+          window.scrollTo({ top: 0, behavior: 'smooth' });
+        } else {
+          const el = document.querySelector(href);
+          if (el) el.scrollIntoView({ behavior: 'smooth', block: 'start' });
+        }
+      }
+    });
+  });
+}
+
 // PWA Service Worker & Install Prompt
 let deferredPrompt = null;
 function registerPWA() {
@@ -93,16 +115,19 @@ function registerPWA() {
     const installBtns = document.querySelectorAll('.pwa-install-btn');
     installBtns.forEach(btn => {
       btn.style.display = 'inline-flex';
-      btn.addEventListener('click', async () => {
-        if (!deferredPrompt) return;
-        deferredPrompt.prompt();
-        const choice = await deferredPrompt.userChoice;
-        if (choice.outcome === 'accepted') {
-          console.log('User installed Tetro PWA');
-        }
-        deferredPrompt = null;
-        btn.style.display = 'none';
-      });
+      if (!btn._installBound) {
+        btn._installBound = true;
+        btn.addEventListener('click', async () => {
+          if (!deferredPrompt) return;
+          deferredPrompt.prompt();
+          const choice = await deferredPrompt.userChoice;
+          if (choice.outcome === 'accepted') {
+            console.log('User installed Tetro PWA');
+          }
+          deferredPrompt = null;
+          btn.style.display = 'none';
+        });
+      }
     });
   });
 }

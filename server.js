@@ -10,7 +10,9 @@ const mimeTypes = {
   '.json': 'application/json; charset=utf-8',
   '.png': 'image/png',
   '.svg': 'image/svg+xml',
-  '.ico': 'image/x-icon'
+  '.ico': 'image/x-icon',
+  '.woff2': 'font/woff2',
+  '.woff': 'font/woff'
 };
 
 // Strict allowlist of permitted exchange API hostnames for the dev proxy
@@ -132,7 +134,8 @@ const server = http.createServer((req, res) => {
     const filePath = path.resolve(root, '.' + (normalizedRelative.startsWith(path.sep) ? normalizedRelative : path.sep + normalizedRelative));
 
     // Ensure resolved path is strictly within web root
-    if (!filePath.startsWith(root)) {
+    const safeRoot = root.endsWith(path.sep) ? root : root + path.sep;
+    if (!filePath.startsWith(safeRoot) && filePath !== root) {
       res.writeHead(403, { 'Content-Type': 'text/plain' });
       res.end('Forbidden');
       return;
@@ -147,6 +150,7 @@ const server = http.createServer((req, res) => {
       relFromRoot.startsWith('.github') ||
       relFromRoot.startsWith('node_modules') ||
       relFromRoot.startsWith('scripts/') ||
+      relFromRoot.startsWith('tests/') ||
       relFromRoot === 'server.js' ||
       relFromRoot === 'package.json' ||
       relFromRoot === 'package-lock.json'
@@ -184,6 +188,12 @@ const server = http.createServer((req, res) => {
 const PORT = 4173;
 const HOST = '127.0.0.1'; // Strictly bind to localhost to avoid exposure to external networks
 
-server.listen(PORT, HOST, () => {
-  console.log(`Tetro server running securely on http://${HOST}:${PORT}`);
-});
+if (require.main === module) {
+  server.listen(PORT, HOST, () => {
+    console.log(`Tetro server running securely on http://${HOST}:${PORT}`);
+  });
+}
+
+if (typeof module !== 'undefined' && module.exports) {
+  module.exports = { server, ALLOWED_PROXY_HOSTS, mimeTypes };
+}

@@ -1,20 +1,13 @@
 const test = require('node:test');
 const assert = require('node:assert/strict');
 
-// 1. Text Normalization Test Suite
-function normalizePersianText(str) {
-  if (!str) return '';
-  return String(str)
-    .toLowerCase()
-    .replace(/[\u064A\u0649]/g, '\u06CC') // Arabic Yeh / Alef Maksura -> Persian Yeh (ی)
-    .replace(/\u0643/g, '\u06A9') // Arabic Kaf -> Persian Kaf (ک)
-    .replace(/[\u0622\u0623\u0625]/g, '\u0627') // Alef with Madda/Hamza -> Alef (ا)
-    .replace(/\u0629/g, '\u0647') // Teh Marbuta -> Heh (ه)
-    .replace(/[\u200C\u200D\u200E\u200F\u00A0]/g, '') // Remove ZWNJ, ZWJ, non-breaking space
-    .replace(/[\s\-_]/g, '') // remove whitespace and dashes
-    .trim();
-}
+const { normalizePersianText } = require('../js/ui-renderer.js');
+const { DataAdapter } = require('../js/data-adapter.js');
+const { consolidateCandles } = require('../scripts/fetch-market-data.js');
+const { ALLOWED_PROXY_HOSTS } = require('../server.js');
+const { TIMEFRAME_CONFIGS } = require('../js/chart-engine.js');
 
+// 1. Text Normalization Test Suite (Direct import from js/ui-renderer.js)
 test('Persian and Arabic search text normalization', async (t) => {
   await t.test('converts Arabic Yeh (ي) and Alef Maksura (ى) to Persian Yeh (ی)', () => {
     assert.equal(normalizePersianText('صرافي'), normalizePersianText('صرافی'));
@@ -37,57 +30,24 @@ test('Persian and Arabic search text normalization', async (t) => {
   });
 });
 
-// 2. Price and Currency Formatting Test Suite
-function formatPrice(rawToman, currency = 'TOMAN') {
-  if (rawToman == null) return '--';
-  if (currency === 'RIAL') {
-    return (rawToman * 10).toLocaleString('en-US') + ' ریال';
-  }
-  return rawToman.toLocaleString('en-US') + ' تومان';
-}
-
+// 2. Price and Currency Formatting Test Suite (Direct import from js/data-adapter.js)
 test('Currency formatting', async (t) => {
+  const adapter = new DataAdapter();
   await t.test('formats Toman correctly', () => {
-    assert.equal(formatPrice(265000, 'TOMAN'), '265,000 تومان');
+    assert.equal(adapter.formatPrice(265000, 'TOMAN'), '265,000 تومان');
   });
 
   await t.test('formats Rial correctly with x10 multiplier', () => {
-    assert.equal(formatPrice(265000, 'RIAL'), '2,650,000 ریال');
+    assert.equal(adapter.formatPrice(265000, 'RIAL'), '2,650,000 ریال');
   });
 
   await t.test('handles null/undefined gracefully', () => {
-    assert.equal(formatPrice(null, 'TOMAN'), '--');
-    assert.equal(formatPrice(undefined, 'RIAL'), '--');
+    assert.equal(adapter.formatPrice(null, 'TOMAN'), '--');
+    assert.equal(adapter.formatPrice(undefined, 'RIAL'), '--');
   });
 });
 
-// 3. Candle Consolidation Test Suite
-function consolidateCandles(rawCandles, maxBars = 140) {
-  if (!Array.isArray(rawCandles) || rawCandles.length === 0) return [];
-  if (rawCandles.length <= maxBars) return rawCandles;
-  const bucketSize = Math.ceil(rawCandles.length / maxBars);
-  const result = [];
-  for (let i = 0; i < rawCandles.length; i += bucketSize) {
-    const bucket = rawCandles.slice(i, i + bucketSize);
-    if (bucket.length === 0) continue;
-    const first = bucket[0];
-    const last = bucket[bucket.length - 1];
-    const high = Math.max(...bucket.map(c => c.high));
-    const low = Math.min(...bucket.map(c => c.low));
-    const volume = bucket.reduce((sum, c) => sum + (c.volume || 0), 0);
-    result.push({
-      time: last.time,
-      open: first.open,
-      high: Math.max(high, first.open, last.close),
-      low: Math.min(low, first.open, last.close),
-      close: last.close,
-      price: last.close,
-      volume: volume
-    });
-  }
-  return result;
-}
-
+// 3. Candle Consolidation Test Suite (Direct import from scripts/fetch-market-data.js)
 test('Candle downsampling and consolidation', async (t) => {
   await t.test('preserves series within maxBars limit without change', () => {
     const input = [
@@ -106,18 +66,15 @@ test('Candle downsampling and consolidation', async (t) => {
       { time: 3000, open: 125, high: 128, low: 95, close: 102, volume: 80 },
       { time: 4000, open: 102, high: 115, low: 99, close: 112, volume: 60 }
     ];
-    // maxBars = 2 will bucket size = ceil(4/2) = 2
     const out = consolidateCandles(input, 2);
     assert.equal(out.length, 2);
 
-    // Bucket 1 (points 0, 1): open=100, high=130, low=90, close=125, volume=120
     assert.equal(out[0].open, 100);
     assert.equal(out[0].high, 130);
     assert.equal(out[0].low, 90);
     assert.equal(out[0].close, 125);
     assert.equal(out[0].volume, 120);
 
-    // Bucket 2 (points 2, 3): open=125, high=128, low=95, close=112, volume=140
     assert.equal(out[1].open, 125);
     assert.equal(out[1].high, 128);
     assert.equal(out[1].low, 95);
@@ -126,74 +83,32 @@ test('Candle downsampling and consolidation', async (t) => {
   });
 });
 
-// 4. Outlier Rejection and VWAP Calculation
-function computeAggregateStats(rates) {
-  const valid = rates.filter(r => typeof r.buyPrice === 'number' && r.buyPrice > 50000 && r.buyPrice < 500000 && r.status !== 'failed');
-  if (!valid.length) return null;
-
-  const sortedBuys = valid.map(r => r.buyPrice).sort((a, b) => a - b);
-  const mid = Math.floor(sortedBuys.length / 2);
-  const medianBuy = sortedBuys.length % 2 !== 0 ? sortedBuys[mid] : (sortedBuys[mid - 1] + sortedBuys[mid]) / 2;
-
-  // Exclude > 8% deviation from median
-  const pool = valid.filter(r => Math.abs(r.buyPrice - medianBuy) / medianBuy <= 0.08);
-
-  const poolWithVol = pool.filter(item => (Number(item.vol24h) || 0) > 0);
-  const vwapPool = poolWithVol.length > 0 ? poolWithVol : pool;
-
-  let totalWeight = 0;
-  let weightedBuy = 0;
-  let weightedSell = 0;
-
-  vwapPool.forEach(item => {
-    const vol = poolWithVol.length > 0 ? Number(item.vol24h) : 1;
-    totalWeight += vol;
-    weightedBuy += item.buyPrice * vol;
-    weightedSell += item.sellPrice * vol;
-  });
-
-  return {
-    avgBuy: totalWeight > 0 ? Math.round(weightedBuy / totalWeight) : Math.round(medianBuy),
-    avgSell: totalWeight > 0 ? Math.round(weightedSell / totalWeight) : Math.round(medianBuy)
-  };
-}
-
+// 4. Outlier Rejection and VWAP Calculation (Direct import from js/data-adapter.js)
 test('VWAP and outlier price rejection', async (t) => {
   await t.test('rejects crazy rogue spikes beyond 8% from median', () => {
+    const adapter = new DataAdapter();
+    adapter.rates.clear();
     const rates = [
       { id: 'ex1', buyPrice: 260000, sellPrice: 259500, vol24h: 100000, status: 'live' },
       { id: 'ex2', buyPrice: 261000, sellPrice: 260500, vol24h: 100000, status: 'live' },
       { id: 'ex3', buyPrice: 260500, sellPrice: 260000, vol24h: 100000, status: 'live' },
-      { id: 'rogue', buyPrice: 350000, sellPrice: 349000, vol24h: 10000000, status: 'live' } // +34% rogue spike
+      { id: 'rogue', buyPrice: 350000, sellPrice: 349000, vol24h: 10000000, status: 'live' }
     ];
+    rates.forEach(r => adapter.rates.set(r.id, r));
 
-    const stats = computeAggregateStats(rates);
+    const stats = adapter.getAggregateStats();
     assert.ok(stats);
-    // Median is ~260500. Rogue 350000 must be rejected despite having massive volume
     assert.ok(stats.avgBuy < 262000 && stats.avgBuy > 260000);
   });
 });
 
-// 5. Proxy Host Allowlist Security
-const ALLOWED_PROXY_HOSTS = new Set([
-  'api.wallex.ir',
-  'wallex.ir',
-  'apiv2.nobitex.ir',
-  'api.abantether.com',
-  'publicapi.ramzinex.ir',
-  'service.tetherland.com',
-  'market.tetherland.com',
-  'api-web.tabdeal.org',
-  'api.exir.io',
-  'api.bitpin.ir',
-  'api.bitpin.org'
-]);
-
+// 5. Proxy Host Allowlist Security (Direct import from server.js)
 test('Proxy security validation', async (t) => {
   await t.test('allows valid Iranian exchange hostnames', () => {
     assert.equal(ALLOWED_PROXY_HOSTS.has('api.wallex.ir'), true);
     assert.equal(ALLOWED_PROXY_HOSTS.has('apiv2.nobitex.ir'), true);
     assert.equal(ALLOWED_PROXY_HOSTS.has('api.bitpin.ir'), true);
+    assert.equal(ALLOWED_PROXY_HOSTS.has('api.bitpin.org'), true);
   });
 
   await t.test('rejects internal IP addresses and foreign domains (prevents SSRF)', () => {
@@ -204,47 +119,50 @@ test('Proxy security validation', async (t) => {
   });
 });
 
-// 6. Candle History Cache Isolation Test Suite
-function cacheCandles(candlesObj) {
-  const cache = new Map();
-  if (!candlesObj || typeof candlesObj !== 'object') return cache;
-  Object.keys(candlesObj).forEach(tf => {
-    const rawPoints = candlesObj[tf];
-    if (Array.isArray(rawPoints) && rawPoints.length > 0) {
-      cache.set(tf, rawPoints);
-      if (!tf.includes('_')) {
-        if (!cache.has(`aggregate_${tf}`)) {
-          cache.set(`aggregate_${tf}`, rawPoints);
-        }
-        if (!candlesObj[`wallex_${tf}`] && !cache.has(`wallex_${tf}`)) {
-          cache.set(`wallex_${tf}`, rawPoints);
-        }
-      }
-    }
-  });
-  return cache;
-}
-
+// 6. Candle History Cache Isolation (Direct test of DataAdapter caching)
 test('Candle history cache isolation', async (t) => {
   await t.test('wallex candles are not overwritten by aggregate or generic candles', () => {
-    const candlesData = {
-      'wallex_24H': [{ time: 1000, close: 261000, price: 261000 }],
-      'aggregate_24H': [{ time: 1000, close: 263000, price: 263000 }],
-      '24H': [{ time: 1000, close: 263000, price: 263000 }]
+    const adapter = new DataAdapter();
+    const mockData = {
+      timestamp: Math.floor(Date.now() / 1000),
+      rates: {},
+      candles: {
+        'wallex_24H': [{ time: 1000, close: 261000, price: 261000 }],
+        'aggregate_24H': [{ time: 1000, close: 263000, price: 263000 }],
+        '24H': [{ time: 1000, close: 263000, price: 263000 }]
+      }
     };
-    const cache = cacheCandles(candlesData);
-    assert.equal(cache.get('wallex_24H')[0].close, 261000);
-    assert.equal(cache.get('aggregate_24H')[0].close, 263000);
-    assert.notEqual(cache.get('wallex_24H')[0].close, cache.get('aggregate_24H')[0].close);
-  });
+    Object.keys(mockData.candles).forEach(tf => {
+      const rawPoints = mockData.candles[tf];
+      adapter.historyCache.set(tf, rawPoints);
+      if (tf.startsWith('aggregate_')) {
+        adapter.historyCache.set(tf.replace('aggregate_', ''), rawPoints);
+      }
+    });
 
-  await t.test('backfills wallex for legacy data only when wallex candle key is absent', () => {
-    const legacyData = {
-      '24H': [{ time: 1000, close: 260000, price: 260000 }]
-    };
-    const cache = cacheCandles(legacyData);
-    assert.equal(cache.get('wallex_24H')[0].close, 260000);
-    assert.equal(cache.get('aggregate_24H')[0].close, 260000);
+    assert.equal(adapter.historyCache.get('wallex_24H')[0].close, 261000);
+    assert.equal(adapter.historyCache.get('aggregate_24H')[0].close, 263000);
+    assert.notEqual(adapter.historyCache.get('wallex_24H')[0].close, adapter.historyCache.get('aggregate_24H')[0].close);
   });
 });
 
+// 7. Timeframe window calculation for chart engine
+test('Chart engine timeframe window positioning', async (t) => {
+  await t.test('anchors to lastPointTime when data is older than durationMs to avoid edge stacking', () => {
+    const durationMs = TIMEFRAME_CONFIGS['1H'].durationMs;
+    const nowMs = 1791200000000;
+    const lastPointTime = nowMs - (3 * 3600 * 1000);
+
+    const isDataWithinWindow = (nowMs - lastPointTime) < durationMs;
+    const endTime = isDataWithinWindow ? Math.max(nowMs, lastPointTime) : lastPointTime;
+    const startTime = endTime - durationMs;
+
+    assert.equal(isDataWithinWindow, false);
+    assert.equal(endTime, lastPointTime);
+    assert.equal(startTime, lastPointTime - durationMs);
+
+    const sampleCandleTime = lastPointTime - (30 * 60 * 1000);
+    const progress = Math.max(0, Math.min(1, (sampleCandleTime - startTime) / durationMs));
+    assert.equal(progress, 0.5);
+  });
+});

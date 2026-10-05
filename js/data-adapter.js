@@ -71,10 +71,10 @@ class DataAdapter {
     // Load real pre-built market.json (synced from real exchange APIs)
     this.loadMarketDataJson();
 
-    // Check for updated market.json every 60 seconds in background
+    // Check for updated market.json every 5 minutes (300s) in background
     this.marketJsonTimer = setInterval(() => {
       this.loadMarketDataJson();
-    }, 60000);
+    }, 300000);
 
     // Start live fetching from real exchange API endpoints only on localhost where dev proxy runs
     if (typeof window !== 'undefined' && (window.location.hostname === 'localhost' || window.location.hostname === '127.0.0.1')) {
@@ -111,7 +111,7 @@ class DataAdapter {
 
   resumeAllPolling() {
     if (!this.marketJsonTimer) {
-      this.marketJsonTimer = setInterval(() => this.loadMarketDataJson(), 60000);
+      this.marketJsonTimer = setInterval(() => this.loadMarketDataJson(), 300000);
     }
     if (typeof window !== 'undefined' && (window.location.hostname === 'localhost' || window.location.hostname === '127.0.0.1')) {
       if (!this.livePollTimer) {
@@ -136,23 +136,27 @@ class DataAdapter {
         this.basePrice = data.basePrice;
       }
 
-      // Update exchange rates
+      // Update exchange rates without rolling back fresh live polled data
+      const snapshotTime = data.timestamp ? (data.timestamp * 1000) : 0;
       Object.keys(data.rates).forEach(id => {
         const item = data.rates[id];
         const current = this.rates.get(id);
         if (current && item) {
-          current.status = item.status || 'live';
-          current.lastSuccessAt = item.lastSuccessAt || null;
-          current.buyPrice = item.buyPrice != null ? item.buyPrice : current.buyPrice;
-          current.sellPrice = item.sellPrice != null ? item.sellPrice : current.sellPrice;
-          current.change24h = item.change24h != null ? Number(Number(item.change24h).toFixed(2)) : current.change24h;
-          current.high24h = item.high24h != null ? item.high24h : current.high24h;
-          current.low24h = item.low24h != null ? item.low24h : current.low24h;
-          current.vol24h = item.vol24h != null ? item.vol24h : current.vol24h;
+          const isLiveNewer = current.lastUpdate && (current.lastUpdate.getTime() > snapshotTime);
+          if (!isLiveNewer) {
+            current.status = item.status || 'live';
+            current.lastSuccessAt = item.lastSuccessAt || null;
+            current.buyPrice = item.buyPrice != null ? item.buyPrice : current.buyPrice;
+            current.sellPrice = item.sellPrice != null ? item.sellPrice : current.sellPrice;
+            current.change24h = item.change24h != null ? Number(Number(item.change24h).toFixed(2)) : current.change24h;
+            current.high24h = item.high24h != null ? item.high24h : current.high24h;
+            current.low24h = item.low24h != null ? item.low24h : current.low24h;
+            current.vol24h = item.vol24h != null ? item.vol24h : current.vol24h;
+            current.lastUpdate = new Date(snapshotTime || Date.now());
+          }
           if (Array.isArray(item.sparkline) && item.sparkline.length > 0) {
             current.sparkline = item.sparkline;
           }
-          current.lastUpdate = new Date(data.timestamp ? data.timestamp * 1000 : Date.now());
           this.rates.set(id, current);
         }
       });
@@ -169,7 +173,9 @@ class DataAdapter {
               label: this.formatTimeLabel(new Date(p.time), cleanTf)
             }));
             this.historyCache.set(tf, formatted);
-            if (!tf.includes('_')) {
+            if (tf.startsWith('aggregate_')) {
+              this.historyCache.set(tf.replace('aggregate_', ''), formatted);
+            } else if (!tf.includes('_')) {
               if (!this.historyCache.has(`aggregate_${tf}`)) {
                 this.historyCache.set(`aggregate_${tf}`, formatted);
               }
@@ -572,7 +578,7 @@ class DataAdapter {
   // Fetch live market data for Bitpin USDT_IRT
   async fetchBitpinPrices() {
     try {
-      const targetUrl = 'https://api.bitpin.ir/v4/mkt/prices/';
+      let targetUrl = 'https://api.bitpin.ir/v4/mkt/prices/';
       const isLocal = typeof window !== 'undefined' && (window.location.hostname === 'localhost' || window.location.hostname === '127.0.0.1');
       let fetchUrl = isLocal ? (this.getProxyUrl(targetUrl) || targetUrl) : targetUrl;
       let res;
@@ -645,11 +651,25 @@ class DataAdapter {
     try {
       const now = Math.floor(Date.now() / 1000);
       const from = now - 86400;
-      const targetUrl = `https://api.bitpin.ir/v1/mkt/tv/get_bars/?symbol=USDT_IRT&res=60&from=${from}&to=${now}`;
+      let targetUrl = `https://api.bitpin.ir/v1/mkt/tv/get_bars/?symbol=USDT_IRT&res=60&from=${from}&to=${now}`;
       const isLocal = typeof window !== 'undefined' && (window.location.hostname === 'localhost' || window.location.hostname === '127.0.0.1');
-      const fetchUrl = isLocal ? (this.getProxyUrl(targetUrl) || targetUrl) : targetUrl;
-      const res = await fetch(fetchUrl);
-      if (!res.ok) return;
+      let fetchUrl = isLocal ? (this.getProxyUrl(targetUrl) || targetUrl) : targetUrl;
+      let res;
+      try {
+        res = await fetch(fetchUrl);
+      } catch (e) {
+        res = null;
+      }
+      if (!res || !res.ok) {
+        targetUrl = `https://api.bitpin.org/v1/mkt/tv/get_bars/?symbol=USDT_IRT&res=60&from=${from}&to=${now}`;
+        fetchUrl = isLocal ? (this.getProxyUrl(targetUrl) || targetUrl) : targetUrl;
+        try {
+          res = await fetch(fetchUrl);
+        } catch (e) {
+          return;
+        }
+      }
+      if (!res || !res.ok) return;
       const json = await res.json();
       if (Array.isArray(json) && json.length > 0) {
         const prices = json.map(p => Math.round(Number(p.close)));
@@ -671,4 +691,9 @@ class DataAdapter {
   }
 }
 
-window.dataAdapter = new DataAdapter();
+if (typeof window !== 'undefined') {
+  window.dataAdapter = new DataAdapter();
+}
+if (typeof module !== 'undefined' && module.exports) {
+  module.exports = { DataAdapter, EXCHANGES_DEF };
+}

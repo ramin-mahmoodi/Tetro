@@ -286,8 +286,7 @@ class UIRenderer {
 
     canvas.width = Math.round(w * dpr);
     canvas.height = Math.round(h * dpr);
-    ctx.resetTransform();
-    ctx.scale(dpr, dpr);
+    ctx.setTransform(dpr, 0, 0, dpr, 0, 0);
     ctx.clearRect(0, 0, w, h);
 
     if (!data || data.length < 2) {
@@ -418,7 +417,9 @@ class UIRenderer {
     }
 
     // Redraw sparkline for this exchange
-    this.drawSparkline(event.exchangeId, this.formatChange(event.rate.change24h) >= 0);
+    const ch = this.formatChange(event.rate.change24h);
+    const isPos = ch != null ? ch >= 0 : true;
+    this.drawSparkline(event.exchangeId, isPos);
   }
 
   updateLastUpdateTimeUI() {
@@ -454,4 +455,9 @@ class UIRenderer {
   }
 }
 
-window.uiRenderer = new UIRenderer();
+if (typeof window !== 'undefined') {
+  window.uiRenderer = new UIRenderer();
+}
+if (typeof module !== 'undefined' && module.exports) {
+  module.exports = { UIRenderer, normalizePersianText };
+}

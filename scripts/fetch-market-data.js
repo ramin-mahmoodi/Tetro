@@ -350,9 +350,10 @@ function parseCandlesFromUdf(json, { divisor = 1, timeframe = '24H' } = {}) {
     return null;
   }
   const timeMap = new Map();
+  const nowMs = Date.now();
   for (let i = 0; i < json.t.length; i++) {
     const rawTime = json.t[i] * 1000;
-    if (!rawTime || isNaN(rawTime)) continue;
+    if (!rawTime || isNaN(rawTime) || rawTime > nowMs + 5 * 60 * 1000) continue;
     const o = Math.round(Number(json.o ? json.o[i] : json.c[i]) / divisor);
     const h = Math.round(Number(json.h ? json.h[i] : json.c[i]) / divisor);
     const l = Math.round(Number(json.l ? json.l[i] : json.c[i]) / divisor);
@@ -376,12 +377,13 @@ function parseCandlesFromUdf(json, { divisor = 1, timeframe = '24H' } = {}) {
 function parseCandlesFromArray(arr, { divisor = 1, timeframe = '24H', timeInMs = false } = {}) {
   if (!Array.isArray(arr) || arr.length === 0) return null;
   const timeMap = new Map();
+  const nowMs = Date.now();
   for (let i = 0; i < arr.length; i++) {
     const item = arr[i];
     let rawTime = item.time;
     if (typeof rawTime === 'string') rawTime = new Date(rawTime).getTime();
     else if (typeof rawTime === 'number' && !timeInMs && rawTime < 1e11) rawTime *= 1000;
-    if (!rawTime || isNaN(rawTime)) continue;
+    if (!rawTime || isNaN(rawTime) || rawTime > nowMs + 5 * 60 * 1000) continue;
 
     const o = Math.round(Number(item.open != null ? item.open : item.close) / divisor);
     const h = Math.round(Number(item.high != null ? item.high : item.close) / divisor);
@@ -846,23 +848,39 @@ async function main() {
       candles[`bitpin_${tf}`] = bitpinPts;
     }
 
-    // Compute true aggregate candles across all active exchanges with data
+    // Compute true aggregate candles across active exchanges with fresh data
+    const tfMaxAgeMs = {
+      '1H': 90 * 60 * 1000,
+      '24H': 48 * 3600 * 1000,
+      '7D': 14 * 86400 * 1000,
+      '30D': 60 * 86400 * 1000,
+      '1Y': 400 * 86400 * 1000
+    };
+    const maxAge = tfMaxAgeMs[tf] || (48 * 3600 * 1000);
+    const nowSync = Date.now();
+
+    const isFresh = (series) => {
+      if (!Array.isArray(series) || series.length === 0) return false;
+      const last = series[series.length - 1];
+      const t = last.time instanceof Date ? last.time.getTime() : Number(last.time);
+      return (nowSync - t) <= maxAge;
+    };
+
     const activeFeeds = {};
-    if (candles[`wallex_${tf}`]) activeFeeds.wallex = candles[`wallex_${tf}`];
-    if (candles[`abantether_${tf}`]) activeFeeds.abantether = candles[`abantether_${tf}`];
-    if (candles[`ramzinex_${tf}`]) activeFeeds.ramzinex = candles[`ramzinex_${tf}`];
-    if (candles[`tabdeal_${tf}`]) activeFeeds.tabdeal = candles[`tabdeal_${tf}`];
-    if (candles[`exir_${tf}`]) activeFeeds.exir = candles[`exir_${tf}`];
-    if (candles[`bitpin_${tf}`]) activeFeeds.bitpin = candles[`bitpin_${tf}`];
+    if (isFresh(candles[`wallex_${tf}`])) activeFeeds.wallex = candles[`wallex_${tf}`];
+    if (isFresh(candles[`abantether_${tf}`])) activeFeeds.abantether = candles[`abantether_${tf}`];
+    if (isFresh(candles[`ramzinex_${tf}`])) activeFeeds.ramzinex = candles[`ramzinex_${tf}`];
+    if (isFresh(candles[`tabdeal_${tf}`])) activeFeeds.tabdeal = candles[`tabdeal_${tf}`];
+    if (isFresh(candles[`exir_${tf}`])) activeFeeds.exir = candles[`exir_${tf}`];
+    if (isFresh(candles[`bitpin_${tf}`])) activeFeeds.bitpin = candles[`bitpin_${tf}`];
 
     const aggPts = computeAggregateCandles(activeFeeds, tf);
     if (aggPts && aggPts.length > 0) {
       candles[`aggregate_${tf}`] = aggPts;
-      candles[tf] = aggPts; // Default chart view uses the true aggregate!
     } else if (candles[`wallex_${tf}`]) {
       candles[`aggregate_${tf}`] = candles[`wallex_${tf}`];
-      candles[tf] = candles[`wallex_${tf}`];
     }
+    delete candles[tf]; // Eliminate duplicate root keys
   }
 
   // Compute accurate 24H high & low from actual candles so table matches chart
@@ -973,7 +991,19 @@ async function main() {
   console.log(`[SUCCESS] Saved updated market data to ${DATA_FILE} at ${output.updatedAt}`);
 }
 
-main().catch(err => {
-  console.error('[FATAL] Script error:', err);
-  process.exit(1);
-});
+if (require.main === module) {
+  main().catch(err => {
+    console.error('[FATAL] Script error:', err);
+    process.exit(1);
+  });
+}
+
+if (typeof module !== 'undefined' && module.exports) {
+  module.exports = {
+    consolidateCandles,
+    computeAggregateCandles,
+    parseCandlesFromArray,
+    parseCandlesFromUdf,
+    COMMON_TF_MAP
+  };
+}

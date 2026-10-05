@@ -142,8 +142,7 @@ class ChartEngine {
 
     this.canvas.width = rect.width * dpr;
     this.canvas.height = rect.height * dpr;
-    this.ctx.resetTransform();
-    this.ctx.scale(dpr, dpr);
+    this.ctx.setTransform(dpr, 0, 0, dpr, 0, 0);
   }
 
   // Get current CSS color variables
@@ -286,29 +285,14 @@ class ChartEngine {
       ctx.textAlign = 'center';
       ctx.textBaseline = 'middle';
 
-      if (this.source === 'nobitex') {
-        ctx.font = 'bold 14px "Vazirmatn", sans-serif';
-        ctx.fillText('اتصال به اندپوینت رسمی نوبیتکس برقرار است', w / 2, h / 2 - 24);
+      const exName = rate ? (rate.faName || rate.name) : 'این بخش';
+      ctx.font = 'bold 14px "Vazirmatn", sans-serif';
+      ctx.fillText(`داده‌های تاریخچه برای ${exName} در دسترس نیست`, w / 2, h / 2 - 14);
 
-        ctx.font = '12px "Vazirmatn", sans-serif';
-        ctx.fillStyle = accent1;
-        ctx.fillText('سرور نوبیتکس در حال حاضر داده‌های کندل تتر را ارسال نمی‌کند (no_data)', w / 2, h / 2 + 2);
-
-        ctx.font = '13px "Vazirmatn", sans-serif';
-        ctx.fillStyle = '#10b981';
-        ctx.fillText(`نرخ لحظه‌ای نوبیتکس زنده و متصل است: ${livePrice}`, w / 2, h / 2 + 28);
-
-        ctx.font = '11px "Vazirmatn", sans-serif';
-        ctx.fillStyle = bgInverse;
-        ctx.globalAlpha = 0.55;
-        ctx.fillText('(به محض رفع اختلال سرور نوبیتکس، کندل‌های زنده به‌طور خودکار رسم خواهند شد)', w / 2, h / 2 + 52);
-        ctx.globalAlpha = 1.0;
-      } else {
-        ctx.font = 'bold 14px "Vazirmatn", sans-serif';
-        ctx.fillText('داده‌های تاریخچه برای این بخش در دسترس نیست', w / 2, h / 2 - 14);
-        ctx.font = '12px "Vazirmatn", sans-serif';
-        ctx.fillStyle = accent1;
-        ctx.fillText(`نرخ لحظه‌ای: ${livePrice}`, w / 2, h / 2 + 14);
+      ctx.font = '12px "Vazirmatn", sans-serif';
+      ctx.fillStyle = accent1;
+      if (livePrice && livePrice !== '--') {
+        ctx.fillText(`آخرین نرخ ثبت‌شده: ${livePrice}`, w / 2, h / 2 + 14);
       }
       return;
     }
@@ -393,8 +377,16 @@ class ChartEngine {
     const lastPointTime = renderPoints.length > 0
       ? (renderPoints[renderPoints.length - 1].time instanceof Date ? renderPoints[renderPoints.length - 1].time.getTime() : Number(renderPoints[renderPoints.length - 1].time))
       : nowMs;
-    const endTime = Math.max(nowMs, lastPointTime);
+    const isDataWithinWindow = (nowMs - lastPointTime) < durationMs;
+    const endTime = isDataWithinWindow ? Math.max(nowMs, lastPointTime) : lastPointTime;
     const startTime = endTime - durationMs;
+
+    // Filter points to those falling within the timeframe window (avoid rendering points far outside window)
+    const windowPoints = renderPoints.filter(p => {
+      const t = p.time instanceof Date ? p.time.getTime() : Number(p.time);
+      return t >= (startTime - tfConfig.defaultIntervalMs);
+    });
+    const pointsToRender = windowPoints.length > 0 ? windowPoints : renderPoints;
 
     // Draw Bottom X-Axis Timeline Labels
     const labelCount = w < 480 ? 3 : (w < 768 ? 4 : 5);
@@ -424,16 +416,16 @@ class ChartEngine {
     // 1. CANDLESTICK CHART MODE (Default)
     // =========================================================================
     if (this.chartType === 'candlestick') {
-      const expectedSlots = Math.max(renderPoints.length, Math.round(durationMs / tfConfig.defaultIntervalMs));
+      const expectedSlots = Math.max(pointsToRender.length, Math.round(durationMs / tfConfig.defaultIntervalMs));
       const slotW = chartW / expectedSlots;
       const candleW = Math.max(1.5, Math.min(16, Math.floor(slotW * 0.72)));
-      const maxVol = Math.max(...renderPoints.map(p => p.volume || 1), 1);
+      const maxVol = Math.max(...pointsToRender.map(p => p.volume || 1), 1);
       const volAreaHeight = chartH * 0.16;
       const volBaseline = padding.top + chartH;
 
       const points = [];
 
-      renderPoints.forEach((dp, i) => {
+      pointsToRender.forEach((dp, i) => {
         const timeMs = dp.time instanceof Date ? dp.time.getTime() : Number(dp.time);
         const progress = Math.max(0, Math.min(1, (timeMs - startTime) / durationMs));
         const x = padding.left + progress * chartW;
@@ -511,7 +503,9 @@ class ChartEngine {
 
         if (this.tooltip) {
           this.tooltip.style.display = 'block';
-          this.tooltip.style.left = `${Math.min(w - 110, Math.max(110, active.x))}px`;
+          const pad = Math.min(100, Math.floor(w / 2));
+          const tipX = Math.max(pad, Math.min(w - pad, active.x));
+          this.tooltip.style.left = `${tipX}px`;
           this.tooltip.style.top = `${Math.max(15, active.y - 12)}px`;
 
           const diff = active.close - active.open;
@@ -542,7 +536,7 @@ class ChartEngine {
     // 2. LINE CHART MODE
     // =========================================================================
     } else {
-      const points = renderPoints.map((dp) => {
+      const points = pointsToRender.map((dp) => {
         const timeMs = dp.time instanceof Date ? dp.time.getTime() : Number(dp.time);
         const progress = Math.max(0, Math.min(1, (timeMs - startTime) / durationMs));
         const x = padding.left + progress * chartW;
@@ -628,7 +622,9 @@ class ChartEngine {
 
         if (this.tooltip) {
           this.tooltip.style.display = 'block';
-          this.tooltip.style.left = `${Math.min(w - 110, Math.max(110, active.x))}px`;
+          const pad = Math.min(100, Math.floor(w / 2));
+          const tipX = Math.max(pad, Math.min(w - pad, active.x));
+          this.tooltip.style.left = `${tipX}px`;
           this.tooltip.style.top = `${Math.max(15, active.y - 10)}px`;
           this.tooltip.innerHTML = `
             <div class="chart-tooltip-header">
@@ -723,4 +719,9 @@ class ChartEngine {
   }
 }
 
-window.chartEngine = new ChartEngine();
+if (typeof window !== 'undefined') {
+  window.chartEngine = new ChartEngine();
+}
+if (typeof module !== 'undefined' && module.exports) {
+  module.exports = { ChartEngine, TIMEFRAME_CONFIGS };
+}
