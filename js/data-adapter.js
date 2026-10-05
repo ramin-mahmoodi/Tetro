@@ -30,25 +30,12 @@ class DataAdapter {
     this.rates = new Map();
     this.historyCache = new Map();
     this.subscribers = new Set();
-    this.tickTimer = null;
-    this.livePollTimer = null;
-    this.sparklinePollTimer = null;
     this.marketJsonTimer = null;
     this.basePrice = null;
   }
 
-  // Resolves API endpoint through local development proxy (when on localhost)
-  getProxyUrl(targetUrl) {
-    if (typeof window !== 'undefined') {
-      if (window.location.hostname === 'localhost' || window.location.hostname === '127.0.0.1') {
-        return `/proxy?url=${encodeURIComponent(targetUrl)}`;
-      }
-    }
-    return null;
-  }
-
   init() {
-    // Populate baseline structure (real data is loaded from market.json / live APIs)
+    // Populate baseline structure (real data is loaded from market.json)
     EXCHANGES_DEF.forEach(ex => {
       this.rates.set(ex.id, {
         id: ex.id,
@@ -64,7 +51,6 @@ class DataAdapter {
         low24h: null,
         sparkline: [],
         lastUpdate: null,
-        isLivePolled: false,
         lastDirection: 'none'
       });
     });
@@ -76,11 +62,6 @@ class DataAdapter {
     this.marketJsonTimer = setInterval(() => {
       this.loadMarketDataJson();
     }, 300000);
-
-    // Start live fetching from real exchange API endpoints only on localhost where dev proxy runs
-    if (typeof window !== 'undefined' && (window.location.hostname === 'localhost' || window.location.hostname === '127.0.0.1')) {
-      this.startLiveApiFetchers();
-    }
 
     // Stop background polling when tab is hidden to save bandwidth and memory
     if (typeof document !== 'undefined') {
@@ -100,24 +81,11 @@ class DataAdapter {
       clearInterval(this.marketJsonTimer);
       this.marketJsonTimer = null;
     }
-    if (this.livePollTimer) {
-      clearInterval(this.livePollTimer);
-      this.livePollTimer = null;
-    }
-    if (this.sparklinePollTimer) {
-      clearInterval(this.sparklinePollTimer);
-      this.sparklinePollTimer = null;
-    }
   }
 
   resumeAllPolling() {
     if (!this.marketJsonTimer) {
       this.marketJsonTimer = setInterval(() => this.loadMarketDataJson(), 300000);
-    }
-    if (typeof window !== 'undefined' && (window.location.hostname === 'localhost' || window.location.hostname === '127.0.0.1')) {
-      if (!this.livePollTimer) {
-        this.startLiveApiFetchers();
-      }
     }
   }
 
@@ -137,25 +105,21 @@ class DataAdapter {
         this.basePrice = data.basePrice;
       }
 
-      // Update exchange rates without rolling back fresh live polled data
+      // Update exchange rates directly from market snapshot
       const snapshotTime = data.timestamp ? (data.timestamp * 1000) : 0;
       Object.keys(data.rates).forEach(id => {
         const item = data.rates[id];
         const current = this.rates.get(id);
         if (current && item) {
-          const isLiveNewer = current.buyPrice !== null && current.isLivePolled && current.lastUpdate && (current.lastUpdate.getTime() > snapshotTime);
-          if (!isLiveNewer) {
-            current.status = item.status || 'live';
-            current.lastSuccessAt = item.lastSuccessAt || null;
-            current.buyPrice = item.buyPrice != null ? item.buyPrice : current.buyPrice;
-            current.sellPrice = item.sellPrice != null ? item.sellPrice : current.sellPrice;
-            current.change24h = item.change24h != null ? Number(Number(item.change24h).toFixed(2)) : current.change24h;
-            current.high24h = item.high24h != null ? item.high24h : current.high24h;
-            current.low24h = item.low24h != null ? item.low24h : current.low24h;
-            current.vol24h = item.vol24h != null ? item.vol24h : current.vol24h;
-            current.lastUpdate = new Date(snapshotTime || Date.now());
-            current.isLivePolled = false;
-          }
+          current.status = item.status || 'live';
+          current.lastSuccessAt = item.lastSuccessAt || null;
+          current.buyPrice = item.buyPrice != null ? item.buyPrice : current.buyPrice;
+          current.sellPrice = item.sellPrice != null ? item.sellPrice : current.sellPrice;
+          current.change24h = item.change24h != null ? Number(Number(item.change24h).toFixed(2)) : current.change24h;
+          current.high24h = item.high24h != null ? item.high24h : current.high24h;
+          current.low24h = item.low24h != null ? item.low24h : current.low24h;
+          current.vol24h = item.vol24h != null ? item.vol24h : current.vol24h;
+          current.lastUpdate = new Date(snapshotTime || Date.now());
           if (Array.isArray(item.sparkline) && item.sparkline.length > 0) {
             current.sparkline = item.sparkline;
           }
@@ -241,21 +205,27 @@ class DataAdapter {
     // 1. Try to get directly from cached 24H candles of that exchange
     const cKey = `${exchangeId}_24H`;
     if (this.historyCache.has(cKey)) {
-      const candles = this.historyCache.get(cKey);
-      if (Array.isArray(candles) && candles.length > 1) {
-        return candles.map(c => Math.round(Number(c.close != null ? c.close : c.price)));
+      const cList = this.historyCache.get(cKey);
+      if (Array.isArray(cList) && cList.length > 0) {
+        return cList.map(p => Math.round(Number(p.close || p.price)));
       }
     }
-    // Fallback for legacy fixtures without exchange prefix
-    if (exchangeId === 'wallex' && this.historyCache.has('24H')) {
-      const candles = this.historyCache.get('24H');
-      if (Array.isArray(candles) && candles.length > 1) {
-        return candles.map(c => Math.round(Number(c.close != null ? c.close : c.price)));
+
+    // 2. Fall back to pre-compiled sparkline array in rates map
+    const rate = this.rates.get(exchangeId);
+    if (rate && Array.isArray(rate.sparkline) && rate.sparkline.length > 0) {
+      return rate.sparkline;
+    }
+
+    // 3. Fall back to market aggregate sparkline
+    if (this.historyCache.has('aggregate_24H')) {
+      const aggList = this.historyCache.get('aggregate_24H');
+      if (Array.isArray(aggList) && aggList.length > 0) {
+        return aggList.map(p => Math.round(Number(p.close || p.price)));
       }
     }
-    // 2. Fallback to rates sparkline
-    const item = this.rates.get(exchangeId);
-    return item && Array.isArray(item.sparkline) ? item.sparkline : [];
+
+    return [];
   }
 
   getLastUpdateTime() {
@@ -301,20 +271,14 @@ class DataAdapter {
       const vol = poolWithVol.length > 0 ? Number(item.vol24h) : 1;
       totalWeight += vol;
       weightedBuy += item.buyPrice * vol;
-      weightedSell += item.sellPrice * vol;
-      weightedChange += (Number(item.change24h) || 0) * vol;
+      weightedSell += (item.sellPrice || item.buyPrice) * vol;
+      if (item.change24h != null) {
+        weightedChange += Number(item.change24h) * vol;
+      }
     });
 
-    let avgBuy = totalWeight > 0 ? Math.round(weightedBuy / totalWeight) : Math.round(medianBuy);
-    let avgSell = totalWeight > 0 ? Math.round(weightedSell / totalWeight) : Math.round(medianBuy);
-
-    // Guaranteed spread integrity
-    if (avgBuy < avgSell) {
-      const tmp = avgBuy;
-      avgBuy = avgSell;
-      avgSell = tmp;
-    }
-
+    const avgBuy = totalWeight > 0 ? Math.round(weightedBuy / totalWeight) : Math.round(medianBuy);
+    const avgSell = totalWeight > 0 ? Math.round(weightedSell / totalWeight) : avgBuy;
     const avgChange = totalWeight > 0 ? Number((weightedChange / totalWeight).toFixed(2)) : 0;
 
     return {
@@ -386,312 +350,6 @@ class DataAdapter {
       return DATA_DATE_FORMATTERS.faYearMonth.format(date);
     } catch (e) {
       return DATA_DATE_FORMATTERS.enYearMonth.format(date);
-    }
-  }
-
-  // Periodic polling from real exchange API endpoints via proxy
-  startLiveApiFetchers() {
-    // Initial fetch right away
-    this.fetchWallexPrices();
-    this.fetchWallexSparkline();
-    this.fetchNobitexPrices();
-    this.fetchNobitexSparkline();
-    this.fetchBitpinPrices();
-    this.fetchBitpinSparkline();
-
-    // Poll live prices every 6 seconds
-    this.livePollTimer = setInterval(() => {
-      this.fetchWallexPrices();
-      this.fetchNobitexPrices();
-      this.fetchBitpinPrices();
-    }, 6000);
-
-    // Refresh sparklines every 60 seconds (never clear candle historyCache)
-    this.sparklinePollTimer = setInterval(() => {
-      this.fetchWallexSparkline();
-      this.fetchNobitexSparkline();
-      this.fetchBitpinSparkline();
-    }, 60000);
-  }
-
-  // Fetch live market data for Wallex USDTTMN
-  async fetchWallexPrices() {
-    try {
-      const targetUrl = 'https://api.wallex.ir/v1/markets';
-      const proxyUrl = this.getProxyUrl(targetUrl);
-      const res = await fetch(proxyUrl);
-      if (!res.ok) throw new Error(`HTTP ${res.status}`);
-      const data = await res.json();
-      const usdt = data.result?.symbols?.USDTTMN;
-      if (!usdt || !usdt.stats) return;
-
-      const bid = Math.round(Number(usdt.stats.bidPrice));
-      const ask = Math.round(Number(usdt.stats.askPrice));
-      const last = Math.round(Number(usdt.stats.lastPrice));
-      const ch24h = Number(usdt.stats['24h_ch'] || 0);
-      const vol = Math.round(Number(usdt.stats['24h_volume'] || 0));
-      const high = Math.round(Number(usdt.stats['24h_highPrice'] || last));
-      const low = Math.round(Number(usdt.stats['24h_lowPrice'] || last));
-
-      const wallexRate = this.rates.get('wallex');
-      if (wallexRate) {
-        const newBuy = Math.max(ask, bid) || last; // user buys from ask
-        const newSell = Math.min(ask, bid) || last; // user sells to bid
-        const wasStale = wallexRate.status !== 'live';
-        wallexRate.status = 'live';
-        wallexRate.lastSuccessAt = new Date().toISOString();
-        if (newBuy > 0 && (newBuy !== wallexRate.buyPrice || newSell !== wallexRate.sellPrice || wasStale)) {
-          const dir = newBuy > wallexRate.buyPrice ? 'up' : (newBuy < wallexRate.buyPrice ? 'down' : 'none');
-          wallexRate.buyPrice = newBuy;
-          wallexRate.sellPrice = newSell;
-          wallexRate.change24h = Number(Number(ch24h).toFixed(2));
-          wallexRate.vol24h = vol;
-          wallexRate.high24h = high;
-          wallexRate.low24h = low;
-          wallexRate.lastUpdate = new Date();
-          wallexRate.isLivePolled = true;
-          wallexRate.lastDirection = dir;
-
-          this.notify({
-            type: 'tick',
-            exchangeId: 'wallex',
-            direction: dir,
-            rate: wallexRate,
-            stats: this.getAggregateStats()
-          });
-        }
-      }
-    } catch (err) {
-      // Quietly ignore
-    }
-  }
-
-  // Fetch live market stats and order rates for Nobitex USDTIRT
-  async fetchNobitexPrices() {
-    try {
-      const targetUrl = 'https://apiv2.nobitex.ir/market/stats?srcCurrency=usdt&dstCurrency=irt';
-      const proxyUrl = this.getProxyUrl(targetUrl);
-      const res = await fetch(proxyUrl);
-      if (!res.ok) throw new Error(`HTTP ${res.status}`);
-      const data = await res.json();
-      const pair = data.stats && data.stats['usdt-irt'];
-      if (!pair) return;
-
-      // Nobitex returns IRR (Rials) -> convert to Toman by dividing by 10
-      const ask = Math.round(Number(pair.bestSell || pair.latest) / 10);
-      const bid = Math.round(Number(pair.bestBuy || pair.latest) / 10);
-      const buyPrice = Math.max(ask, bid); // user buys from lowest ask
-      const sellPrice = Math.min(ask, bid); // user sells to highest bid
-      const lastPrice = Math.round(Number(pair.latest) / 10);
-      const change24h = Number(pair.dayChange || 0);
-      const vol24h = Math.round(Number(pair.volumeSrc || 0)); // volumeSrc is USDT!
-      const high24h = Math.round(Number(pair.dayHigh) / 10);
-      const low24h = Math.round(Number(pair.dayLow) / 10);
-
-      const nobitexRate = this.rates.get('nobitex');
-      if (nobitexRate && (buyPrice > 0 || lastPrice > 0)) {
-        const activeBuy = buyPrice || lastPrice;
-        const activeSell = sellPrice || lastPrice;
-        const wasStale = nobitexRate.status !== 'live';
-        nobitexRate.status = 'live';
-        nobitexRate.lastSuccessAt = new Date().toISOString();
-        if ((activeBuy > 0 || activeSell > 0) && (activeBuy !== nobitexRate.buyPrice || activeSell !== nobitexRate.sellPrice || wasStale)) {
-          const dir = activeBuy > nobitexRate.buyPrice ? 'up' : (activeBuy < nobitexRate.buyPrice ? 'down' : 'none');
-          nobitexRate.buyPrice = activeBuy;
-          nobitexRate.sellPrice = activeSell;
-          nobitexRate.change24h = Number(Number(change24h).toFixed(2));
-          nobitexRate.vol24h = vol24h;
-          nobitexRate.high24h = high24h;
-          nobitexRate.low24h = low24h;
-          nobitexRate.lastUpdate = new Date();
-          nobitexRate.isLivePolled = true;
-          nobitexRate.lastDirection = dir;
-
-          this.notify({
-            type: 'tick',
-            exchangeId: 'nobitex',
-            direction: dir,
-            rate: nobitexRate,
-            stats: this.getAggregateStats()
-          });
-        }
-      }
-    } catch (err) {
-      console.warn('Nobitex price fetch error:', err.message);
-    }
-  }
-
-  // Fetch 24h mini sparkline for Wallex via UDF history (1-hour candles over 24h)
-  async fetchWallexSparkline() {
-    try {
-      const now = Math.floor(Date.now() / 1000);
-      const from = now - 86400;
-      const targetUrl = `https://api.wallex.ir/v1/udf/history?symbol=USDTTMN&resolution=60&from=${from}&to=${now}`;
-      const proxyUrl = this.getProxyUrl(targetUrl);
-      const res = await fetch(proxyUrl);
-      if (!res.ok) return;
-      const json = await res.json();
-      if (json.s === 'ok' && Array.isArray(json.c) && json.c.length > 0) {
-        const prices = json.c.map(p => Math.round(Number(p)));
-        const wallexRate = this.rates.get('wallex');
-        if (wallexRate) {
-          wallexRate.sparkline = prices;
-          this.notify({
-            type: 'tick',
-            exchangeId: 'wallex',
-            direction: 'none',
-            rate: wallexRate,
-            stats: this.getAggregateStats()
-          });
-        }
-      }
-    } catch (err) {
-      // Ignored
-    }
-  }
-
-  // Fetch 24h mini sparkline for Nobitex
-  async fetchNobitexSparkline() {
-    try {
-      const now = Math.floor(Date.now() / 1000);
-      const from = now - 86400;
-      const targetUrl = `https://apiv2.nobitex.ir/market/udf/history?symbol=USDTIRT&resolution=60&from=${from}&to=${now}`;
-      const proxyUrl = this.getProxyUrl(targetUrl);
-      const res = await fetch(proxyUrl);
-      if (!res.ok) return;
-      const json = await res.json();
-      if (json.s === 'ok' && Array.isArray(json.c) && json.c.length > 0) {
-        const prices = json.c.map(p => Math.round(Number(p) / 10)); // Nobitex is always IRR, divide by 10!
-        const nobitexRate = this.rates.get('nobitex');
-        if (nobitexRate) {
-          nobitexRate.sparkline = prices;
-          this.notify({
-            type: 'tick',
-            exchangeId: 'nobitex',
-            direction: 'none',
-            rate: nobitexRate,
-            stats: this.getAggregateStats()
-          });
-        }
-      }
-    } catch (err) {
-      // Ignored
-    }
-  }
-
-  // Fetch live market data for Bitpin USDT_IRT
-  async fetchBitpinPrices() {
-    try {
-      let targetUrl = 'https://api.bitpin.ir/v4/mkt/prices/';
-      const isLocal = typeof window !== 'undefined' && (window.location.hostname === 'localhost' || window.location.hostname === '127.0.0.1');
-      let fetchUrl = isLocal ? (this.getProxyUrl(targetUrl) || targetUrl) : targetUrl;
-      let res;
-      try {
-        res = await fetch(fetchUrl);
-      } catch (e) {
-        res = null;
-      }
-      if (!res || !res.ok) {
-        targetUrl = 'https://api.bitpin.org/v4/mkt/prices/';
-        fetchUrl = isLocal ? (this.getProxyUrl(targetUrl) || targetUrl) : targetUrl;
-        try {
-          res = await fetch(fetchUrl);
-        } catch (e) {
-          return;
-        }
-      }
-      if (!res || !res.ok) return;
-      const json = await res.json();
-      const list = Array.isArray(json) ? json : (json?.results ? (Array.isArray(json.results) ? json.results : Object.values(json.results)) : []);
-      const bp = list.find(p => p.code === 'USDT_IRT');
-      if (!bp) return;
-
-      const price = Math.round(Number(bp.price || bp.order_book_info?.price));
-      const high = Math.round(Number(bp.order_book_info?.max || bp.price_info?.max || price));
-      const low = Math.round(Number(bp.order_book_info?.min || bp.price_info?.min || price));
-      const ch24h = Number((bp.price_info && bp.price_info.change != null) ? bp.price_info.change : (bp.order_book_info?.change ? bp.order_book_info.change * 100 : 0));
-      let volUsdt = 0;
-      if (bp.order_book_info && bp.order_book_info.amount) {
-        volUsdt = Math.round(Number(bp.order_book_info.amount));
-      } else if (bp.order_book_info && bp.order_book_info.value && price > 0) {
-        volUsdt = Math.round(Number(bp.order_book_info.value) / price);
-      } else {
-        const existingBp = this.rates.get('bitpin');
-        volUsdt = (existingBp && existingBp.vol24h) || 0;
-      }
-
-      const bpRate = this.rates.get('bitpin');
-      if (bpRate && price > 0) {
-        const wasStale = bpRate.status !== 'live';
-        bpRate.status = 'live';
-        bpRate.lastSuccessAt = new Date().toISOString();
-        if (price !== bpRate.buyPrice || wasStale) {
-          const dir = price > bpRate.buyPrice ? 'up' : (price < bpRate.buyPrice ? 'down' : 'none');
-          bpRate.buyPrice = price;
-          bpRate.sellPrice = price;
-          bpRate.change24h = Number(Number(ch24h).toFixed(2));
-          bpRate.high24h = high;
-          bpRate.low24h = low;
-          bpRate.vol24h = volUsdt;
-          bpRate.lastUpdate = new Date();
-          bpRate.isLivePolled = true;
-          bpRate.lastDirection = dir;
-
-          this.notify({
-            type: 'tick',
-            exchangeId: 'bitpin',
-            direction: dir,
-            rate: bpRate,
-            stats: this.getAggregateStats()
-          });
-        }
-      }
-    } catch (err) {
-      // Ignored
-    }
-  }
-
-  // Fetch 24h mini sparkline for Bitpin
-  async fetchBitpinSparkline() {
-    try {
-      const now = Math.floor(Date.now() / 1000);
-      const from = now - 86400;
-      let targetUrl = `https://api.bitpin.ir/v1/mkt/tv/get_bars/?symbol=USDT_IRT&res=60&from=${from}&to=${now}`;
-      const isLocal = typeof window !== 'undefined' && (window.location.hostname === 'localhost' || window.location.hostname === '127.0.0.1');
-      let fetchUrl = isLocal ? (this.getProxyUrl(targetUrl) || targetUrl) : targetUrl;
-      let res;
-      try {
-        res = await fetch(fetchUrl);
-      } catch (e) {
-        res = null;
-      }
-      if (!res || !res.ok) {
-        targetUrl = `https://api.bitpin.org/v1/mkt/tv/get_bars/?symbol=USDT_IRT&res=60&from=${from}&to=${now}`;
-        fetchUrl = isLocal ? (this.getProxyUrl(targetUrl) || targetUrl) : targetUrl;
-        try {
-          res = await fetch(fetchUrl);
-        } catch (e) {
-          return;
-        }
-      }
-      if (!res || !res.ok) return;
-      const json = await res.json();
-      if (Array.isArray(json) && json.length > 0) {
-        const prices = json.map(p => Math.round(Number(p.close)));
-        const bpRate = this.rates.get('bitpin');
-        if (bpRate) {
-          bpRate.sparkline = prices;
-          this.notify({
-            type: 'tick',
-            exchangeId: 'bitpin',
-            direction: 'none',
-            rate: bpRate,
-            stats: this.getAggregateStats()
-          });
-        }
-      }
-    } catch (err) {
-      // Ignored
     }
   }
 }

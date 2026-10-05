@@ -4,7 +4,7 @@ const assert = require('node:assert/strict');
 const { normalizePersianText } = require('../js/ui-renderer.js');
 const { DataAdapter, EXCHANGES_DEF } = require('../js/data-adapter.js');
 const { consolidateCandles } = require('../scripts/fetch-market-data.js');
-const { ALLOWED_PROXY_HOSTS } = require('../server.js');
+const { isPathSensitive } = require('../server.js');
 const { TIMEFRAME_CONFIGS } = require('../js/chart-engine.js');
 
 // 1. Text Normalization Test Suite (Direct import from js/ui-renderer.js)
@@ -102,20 +102,20 @@ test('VWAP and outlier price rejection', async (t) => {
   });
 });
 
-// 5. Proxy Host Allowlist Security (Direct import from server.js)
-test('Proxy security validation', async (t) => {
-  await t.test('allows valid Iranian exchange hostnames', () => {
-    assert.equal(ALLOWED_PROXY_HOSTS.has('api.wallex.ir'), true);
-    assert.equal(ALLOWED_PROXY_HOSTS.has('apiv2.nobitex.ir'), true);
-    assert.equal(ALLOWED_PROXY_HOSTS.has('api.bitpin.ir'), true);
-    assert.equal(ALLOWED_PROXY_HOSTS.has('api.bitpin.org'), true);
+// 5. Static File Path Security (Direct import from server.js)
+test('Static server file security validation', async (t) => {
+  await t.test('identifies sensitive internal files and folders', () => {
+    assert.equal(isPathSensitive('.git/config'), true);
+    assert.equal(isPathSensitive('server.js'), true);
+    assert.equal(isPathSensitive('package.json'), true);
+    assert.equal(isPathSensitive('tests/market-data.test.js'), true);
   });
 
-  await t.test('rejects internal IP addresses and foreign domains (prevents SSRF)', () => {
-    assert.equal(ALLOWED_PROXY_HOSTS.has('127.0.0.1'), false);
-    assert.equal(ALLOWED_PROXY_HOSTS.has('localhost'), false);
-    assert.equal(ALLOWED_PROXY_HOSTS.has('169.254.169.254'), false);
-    assert.equal(ALLOWED_PROXY_HOSTS.has('evil.com'), false);
+  await t.test('allows safe public assets and data', () => {
+    assert.equal(isPathSensitive('index.html'), false);
+    assert.equal(isPathSensitive('css/layout.css'), false);
+    assert.equal(isPathSensitive('js/app.js'), false);
+    assert.equal(isPathSensitive('data/market.json'), false);
   });
 });
 
@@ -187,7 +187,6 @@ test('Snapshot rate initialization', async (t) => {
         low24h: null,
         sparkline: [],
         lastUpdate: null,
-        isLivePolled: false,
         lastDirection: 'none'
       });
     });
@@ -205,13 +204,9 @@ test('Snapshot rate initialization', async (t) => {
       const item = mockSnapshot.rates[id];
       const current = adapter.rates.get(id);
       if (current && item) {
-        const isLiveNewer = current.buyPrice !== null && current.isLivePolled && current.lastUpdate && (current.lastUpdate.getTime() > snapshotTime);
-        if (!isLiveNewer) {
-          current.buyPrice = item.buyPrice;
-          current.sellPrice = item.sellPrice;
-          current.lastUpdate = new Date(snapshotTime);
-          current.isLivePolled = false;
-        }
+        current.buyPrice = item.buyPrice;
+        current.sellPrice = item.sellPrice;
+        current.lastUpdate = new Date(snapshotTime);
       }
     });
 
