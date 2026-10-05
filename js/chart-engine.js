@@ -104,17 +104,11 @@ class ChartEngine {
       const rate = window.dataAdapter ? window.dataAdapter.rates.get(this.source) : null;
       if (rate) {
         const currentEl = document.getElementById('chart-current-price');
-        const minEl = document.getElementById('chart-min-price');
-        const maxEl = document.getElementById('chart-max-price');
         if (currentEl) currentEl.textContent = window.dataAdapter.formatPrice(rate.buyPrice);
-        if (minEl) minEl.textContent = window.dataAdapter.formatPrice(rate.low24h || rate.buyPrice);
-        if (maxEl) maxEl.textContent = window.dataAdapter.formatPrice(rate.high24h || rate.buyPrice);
       }
       return;
     }
     const prices = this.dataPoints.map(p => p.price);
-    const min = Math.min(...prices);
-    const max = Math.max(...prices);
     const latest = prices[prices.length - 1];
 
     let displayedPrice = latest;
@@ -127,12 +121,7 @@ class ChartEngine {
     }
 
     const currentEl = document.getElementById('chart-current-price');
-    const minEl = document.getElementById('chart-min-price');
-    const maxEl = document.getElementById('chart-max-price');
-
     if (currentEl) currentEl.textContent = window.dataAdapter.formatPrice(displayedPrice);
-    if (minEl) minEl.textContent = window.dataAdapter.formatPrice(min);
-    if (maxEl) maxEl.textContent = window.dataAdapter.formatPrice(max);
   }
 
   resizeCanvas() {
