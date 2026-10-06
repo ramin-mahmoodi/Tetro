@@ -40,9 +40,6 @@ jobs:
 
       - name: Fetch and compile market data
         run: node scripts/fetch-market-data.js
-        env:
-          IRAN_PROXY: ${{ secrets.IRAN_PROXY }}
-          HTTPS_PROXY: ${{ secrets.HTTPS_PROXY }}
 
       - name: Build production bundle
         run: npm run build

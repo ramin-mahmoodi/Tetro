@@ -6,9 +6,6 @@
 
 const fs = require('fs');
 const path = require('path');
-const http = require('http');
-const https = require('https');
-const { URL } = require('url');
 
 const DATA_FILE = path.join(__dirname, '..', 'data', 'market.json');
 
@@ -29,114 +26,25 @@ const headers = {
 };
 
 async function safeFetchJson(targetUrl, timeoutMs = 8000) {
-  const proxyStr = process.env.IRAN_PROXY || process.env.HTTPS_PROXY || process.env.HTTP_PROXY;
-  if (!proxyStr) {
-    try {
-      const controller = new AbortController();
-      const timeout = setTimeout(() => controller.abort(), timeoutMs);
-      const res = await fetch(targetUrl, { headers, signal: controller.signal });
-      clearTimeout(timeout);
-      if (!res.ok) {
-        console.warn(`[WARN] ${targetUrl} returned HTTP ${res.status}`);
-        return null;
-      }
-      const text = await res.text();
-      if (text.trim().startsWith('<')) {
-        console.warn(`[WARN] ${targetUrl} returned HTML instead of JSON`);
-        return null;
-      }
-      return JSON.parse(text);
-    } catch (err) {
-      console.warn(`[ERROR] Fetch failed for ${targetUrl}:`, err.message);
+  try {
+    const controller = new AbortController();
+    const timeout = setTimeout(() => controller.abort(), timeoutMs);
+    const res = await fetch(targetUrl, { headers, signal: controller.signal });
+    clearTimeout(timeout);
+    if (!res.ok) {
+      console.warn(`[WARN] ${targetUrl} returned HTTP ${res.status}`);
       return null;
     }
-  }
-
-  // CONNECT proxy tunnel support for environments requiring proxies (e.g. GitHub Actions runner geo-blocking)
-  return new Promise((resolve) => {
-    try {
-      const target = new URL(targetUrl);
-      const proxy = new URL(proxyStr);
-      const isHttps = target.protocol === 'https:';
-      const targetPort = target.port || (isHttps ? 443 : 80);
-
-      const timer = setTimeout(() => {
-        console.warn(`[TIMEOUT] Proxy fetch timed out for ${targetUrl}`);
-        resolve(null);
-      }, timeoutMs);
-
-      const connectReq = http.request({
-        host: proxy.hostname,
-        port: proxy.port || 8080,
-        method: 'CONNECT',
-        path: `${target.hostname}:${targetPort}`,
-        headers: {
-          Host: `${target.hostname}:${targetPort}`
-        }
-      });
-
-      connectReq.on('connect', (res, socket) => {
-        if (res.statusCode !== 200) {
-          clearTimeout(timer);
-          socket.destroy();
-          console.warn(`[WARN] Proxy CONNECT to ${target.hostname} failed with status ${res.statusCode}`);
-          return resolve(null);
-        }
-
-        const agent = isHttps ? new https.Agent({ socket }) : new http.Agent({ socket });
-        const reqLib = isHttps ? https : http;
-
-        const req = reqLib.request({
-          host: target.hostname,
-          port: targetPort,
-          path: target.pathname + target.search,
-          method: 'GET',
-          agent: agent,
-          headers: {
-            ...headers,
-            Host: target.hostname
-          }
-        }, (resp) => {
-          let body = '';
-          resp.on('data', chunk => { body += chunk; });
-          resp.on('end', () => {
-            clearTimeout(timer);
-            try {
-              if (resp.statusCode >= 200 && resp.statusCode < 300) {
-                if (!body.trim().startsWith('<')) {
-                  return resolve(JSON.parse(body));
-                }
-              }
-              console.warn(`[WARN] Proxy GET ${targetUrl} returned HTTP ${resp.statusCode}`);
-              resolve(null);
-            } catch (e) {
-              console.warn(`[WARN] Proxy JSON parse error for ${targetUrl}:`, e.message);
-              resolve(null);
-            }
-          });
-        });
-
-        req.on('error', (err) => {
-          clearTimeout(timer);
-          console.warn(`[ERROR] Proxy request error for ${targetUrl}:`, err.message);
-          resolve(null);
-        });
-
-        req.end();
-      });
-
-      connectReq.on('error', (err) => {
-        clearTimeout(timer);
-        console.warn(`[ERROR] Proxy connect error:`, err.message);
-        resolve(null);
-      });
-
-      connectReq.end();
-    } catch (err) {
-      console.warn(`[ERROR] Proxy setup error:`, err.message);
-      resolve(null);
+    const text = await res.text();
+    if (text.trim().startsWith('<')) {
+      console.warn(`[WARN] ${targetUrl} returned HTML instead of JSON`);
+      return null;
     }
-  });
+    return JSON.parse(text);
+  } catch (err) {
+    console.warn(`[ERROR] Fetch failed for ${targetUrl}:`, err.message);
+    return null;
+  }
 }
 
 async function fetchWallexPrices() {
